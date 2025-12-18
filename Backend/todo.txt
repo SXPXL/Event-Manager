@@ -1,0 +1,5 @@
+sam - EVT-1WRC5
+dani -EVT-XF30Z
+don - EVT-UUTZY
+
+new issue found: When a leader enters their own email again into the team details, a duplicate registration occurs for the leader showing the same event two tims
