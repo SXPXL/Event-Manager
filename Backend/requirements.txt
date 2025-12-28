@@ -10,3 +10,4 @@ qrcode[pil]==7.4.2
 pydantic==2.5.0
 passlib[bcrypt]==1.7.4
 alembic==1.13.0
+email-validator
