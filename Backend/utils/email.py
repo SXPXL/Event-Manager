@@ -1,21 +1,21 @@
-import smtplib
-import ssl
+import requests
 import os
 import uuid
 import qrcode
+import base64
 from io import BytesIO
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.image import MIMEImage
 from dotenv import load_dotenv
 
-# Load credentials from .env
+# Load credentials
 load_dotenv()
 
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 465
-SENDER_EMAIL = os.getenv("EMAIL_USER")
-SENDER_PASSWORD = os.getenv("EMAIL_PASS")
+# Brevo API Endpoint
+BREVO_URL = "https://api.brevo.com/v3/smtp/email"
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+
+# Use a verified sender email from your Brevo account
+SENDER_EMAIL = os.getenv("SENDER_EMAIL") 
+SENDER_NAME = "Srishti Team"
 
 def generate_uid():
     """Generates a short, unique 5-char code."""
@@ -27,14 +27,13 @@ def generate_qr_image(uid):
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
         box_size=10,
-        border=2, # Smaller border for email aesthetics
+        border=2,
     )
     qr.add_data(uid)
     qr.make(fit=True)
 
     img = qr.make_image(fill_color="black", back_color="white")
     
-    # Save to memory buffer
     img_buffer = BytesIO()
     img.save(img_buffer, format="PNG")
     img_buffer.seek(0)
@@ -42,26 +41,24 @@ def generate_qr_image(uid):
 
 def send_email_background(to_email: str, name: str, uid: str, is_shadow_notification: bool = False, leader_name: str = None):
     """
-    Sends an HTML email with the QR Code EMBEDDED (Inline).
+    Sends an email using Brevo API (Port 443) with an INLINE QR Code.
     """
-    if not SENDER_EMAIL or not SENDER_PASSWORD:
-        print("❌ EMAIL CONFIG MISSING: Check .env file")
+    if not BREVO_API_KEY:
+        print("❌ EMAIL ERROR: BREVO_API_KEY is missing in environment variables.")
         return
 
     try:
-        # 'multipart/related' is required for inline images
-        msg = MIMEMultipart("related")
-        msg["From"] = SENDER_EMAIL
-        msg["To"] = to_email
+        # 1. Generate QR Code & Convert to Base64
+        qr_bytes = generate_qr_image(uid)
+        qr_base64 = base64.b64encode(qr_bytes).decode('utf-8')
         
-        # Define the Image Content-ID
-        image_cid = f"qr_{uid}@srishti"
+        # 2. Define Content-ID for Inline Image
+        # Brevo uses this ID to map the attachment to the HTML <img> tag
+        image_cid = f"qr_{uid}" 
 
-        # --- EMAIL CONTENT ---
+        # 3. Construct HTML Content
         if is_shadow_notification:
-            msg["Subject"] = f"Action Required: You've been added to a Team - Srishti 2.6"
-            
-            # Note the <img src="cid:..."> tag below
+            subject = "Action Required: You've been added to a Team - Srishti 2.6"
             html_content = f"""
             <html>
                 <body style="font-family: Arial, sans-serif; color: #333;">
@@ -79,15 +76,12 @@ def send_email_background(to_email: str, name: str, uid: str, is_shadow_notifica
                             <p style="margin:0; font-size:0.8rem; color:#666">Access Code (Manual Entry)</p>
                             <h2 style="margin: 5px 0; letter-spacing: 2px; color: #111;">{uid}</h2>
                         </div>
-                        
-                        <p style="text-align: center; font-size: 0.9rem; color: #555;">Please present this QR code at the gate for entry.</p>
                     </div>
                 </body>
             </html>
             """
         else:
-            msg["Subject"] = "Your Srishti 2.6 Ticket & Access Code"
-            
+            subject = "Your Srishti 2.6 Ticket & Access Code"
             html_content = f"""
             <html>
                 <body style="font-family: Arial, sans-serif; color: #333;">
@@ -105,35 +99,40 @@ def send_email_background(to_email: str, name: str, uid: str, is_shadow_notifica
                             <p style="margin:0; font-size:0.8rem; color:#065F46">Access Code (Manual Entry)</p>
                             <h2 style="margin: 5px 0; letter-spacing: 2px; color: #065F46;">{uid}</h2>
                         </div>
-                        
-                        <p style="text-align: center; font-size: 0.9rem; color: #555;">Please present this QR code at the gate for entry.</p>
                     </div>
                 </body>
             </html>
             """
 
-        # Attach HTML Part
-        msg.attach(MIMEText(html_content, "html"))
+        # 4. Prepare the API Payload
+        payload = {
+            "sender": {"name": SENDER_NAME, "email": SENDER_EMAIL},
+            "to": [{"email": to_email, "name": name}],
+            "subject": subject,
+            "htmlContent": html_content,
+            "attachment": [
+                {
+                    "content": qr_base64,
+                    "name": f"Srishti_QR_{uid}.png",
+                    "contentId": image_cid  # <--- MAGIC LINK: Connects JSON to HTML <img src='cid:'>
+                }
+            ]
+        }
 
-        # --- ATTACH IMAGE WITH CONTENT-ID ---
-        qr_bytes = generate_qr_image(uid)
-        
-        img_part = MIMEImage(qr_bytes)
-        
-        # The Critical Step: Linking the CID to the HTML <img> tag
-        # Use angle brackets <...> for the header value
-        img_part.add_header('Content-ID', f"<{image_cid}>") 
-        img_part.add_header('Content-Disposition', 'inline', filename=f"Srishti_QR_{uid}.png")
-        
-        msg.attach(img_part)
+        # 5. Send Request (HTTP POST)
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "api-key": BREVO_API_KEY
+        }
 
-        # Send
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.sendmail(SENDER_EMAIL, to_email, msg.as_string())
-        
-        print(f"✅ Email sent to {to_email} with Inline QR.")
+        response = requests.post(BREVO_URL, json=payload, headers=headers)
+
+        # 6. Check Response
+        if response.status_code == 201: # 201 Created = Success
+            print(f"✅ Email sent via Brevo to {to_email}")
+        else:
+            print(f"❌ Brevo Error: {response.status_code} - {response.text}")
 
     except Exception as e:
-        print(f"❌ Failed to send email: {e}")
+        print(f"❌ Email Logic Failed: {e}")
