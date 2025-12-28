@@ -9,6 +9,7 @@ class UserDetails(BaseModel):
     email: str
     phone: Optional[str]
     college: Optional[str]
+    is_shadow: bool = False
 
 class UserCreateUpdate(BaseModel):
     name: str
@@ -22,3 +23,7 @@ class UserResponse(BaseModel):
     email: str
     is_shadow: bool
     message: str
+class UserUpdateProfile(BaseModel):
+    name: str
+    phone: str
+    college: str

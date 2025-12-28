@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, EmailStr
+from typing import Optional, List
 from models.enums import VolunteerRole
 
 class VolunteerCreate(BaseModel):
@@ -28,3 +28,21 @@ class AdminLoginResponse(BaseModel):
 class TokenRequest(BaseModel):
     amount: float
     volunteer_id: int
+
+class WalkInMemberInput(BaseModel):
+    name: str
+    email: EmailStr
+
+class WalkInBulkRequest(BaseModel):
+    # Leader / Solo Details
+    name: str
+    email: EmailStr
+    phone: str
+    college: str
+    
+    # Event & Staff Info
+    event_id: int
+    volunteer_id: int
+    
+    # Optional Teammates (Only Name + Email)
+    members: List[WalkInMemberInput] = []

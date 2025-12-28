@@ -11,12 +11,25 @@ const AdminLogin = () => {
     e.preventDefault();
     try {
       const res = await API.post('/admin/login', creds);
-      if (res.data.success) {
-        localStorage.setItem('userRole', res.data.role); 
-        navigate('/admin/dashboard');
-      }
-    } catch (err) { setError("Invalid Credentials"); }
-  };
+      localStorage.setItem('token', res.data.token);
+    
+    // 2. Create the User Object (combining role, name, id)
+    const userData = {
+      id: res.data.id,       // Crucial for Walk-in/Cashier
+      name: res.data.name || res.data.username, 
+      role: res.data.role
+    };
+
+    // 3. Save as a JSON string with the key 'user'
+    localStorage.setItem('user', JSON.stringify(userData));
+
+    // 4. Redirect to Dashboard
+    navigate('/admin/dashboard'); 
+
+  } catch (err) {
+    alert("Login Failed");
+  }
+};
 
   return (
     <div className="page-container">

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import API from '../api';
+import { load } from '@cashfreepayments/cashfree-js';
+import Loading from './components/Loading'; // Ensure this path is correct
 
 const Dashboard = () => {
   const location = useLocation();
@@ -12,17 +14,24 @@ const Dashboard = () => {
   const [myEvents, setMyEvents] = useState([]);
   const [availableEvents, setAvailableEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showQr, setShowQr] = useState(false); 
+
+  // --- EDIT PROFILE STATE ---
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', phone: '', college: '' });
 
   // --- STACK (CART) STATE ---
-  const [eventStack, setEventStack] = useState([]); // Array of { event_id, fee, name, team_details... }
+  const [eventStack, setEventStack] = useState([]); 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [paymentMode, setPaymentMode] = useState('ONLINE'); // 'ONLINE' or 'CASH'
+  const [paymentMode, setPaymentMode] = useState('ONLINE'); 
   const [cashToken, setCashToken] = useState('');
 
-  // --- MODAL STATE (For filling group details) ---
+  // --- MODAL STATE ---
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [teamName, setTeamName] = useState('');
   const [teammates, setTeammates] = useState([{ name: '', email: '' }]);
+
+  //payment processing
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   useEffect(() => {
     if (!uid) { navigate('/'); return; }
@@ -36,99 +45,194 @@ const Dashboard = () => {
         API.get('/events')
       ]);
 
-      if (userRes.data.exists) {
+      if (userRes.data && userRes.data.exists) {
         setUser(userRes.data.user);
-        setMyEvents(userRes.data.registered_events);
+        sessionStorage.setItem("active_user_uid", userRes.data.user.uid);
         
-        // Filter events: Remove those already registered
-        const myEventIds = new Set(userRes.data.registered_events.map(e => e.id));
-        setAvailableEvents(eventsRes.data.filter(e => !myEventIds.has(e.id)));
-      } else { navigate('/'); }
-    } catch (err) { alert("Failed to load dashboard."); } finally { setLoading(false); }
+        // --- PRE-FILL EDIT FORM ---
+        setEditForm({
+            name: userRes.data.user.name,
+            phone: userRes.data.user.phone || '',
+            college: userRes.data.user.college || ''
+        });
+
+        const allRegistrations = userRes.data.registered_events || [];
+        
+        // 1. FILTER: Only show PAID events in the "Registered" section
+        const confirmedEvents = allRegistrations.filter(e => e.payment_status === 'PAID');
+        setMyEvents(confirmedEvents);
+        
+        // 2. LOGIC: Define what counts as "Taken"
+        // If an event is PAID, remove it from Available.
+        // If it is FAILED, keep it in Available so they can try again!
+        const takenEventIds = new Set(confirmedEvents.map(e => e.id));
+        
+        setAvailableEvents((eventsRes.data || []).filter(e => !takenEventIds.has(e.id)));
+      } else {
+        // User not found in DB
+        navigate('/'); 
+      }
+    } catch (err) { 
+        console.error("Dashboard Load Error:", err);
+    } finally { 
+        setLoading(false); 
+    }
   };
 
-  // --- STACK LOGIC ---
+  const handleUpdateProfile = async (e) => {
+      e.preventDefault();
+      try {
+          await API.put(`/users/${user.uid}`, editForm);
+          setUser({ ...user, ...editForm }); 
+          setIsEditOpen(false);
+          alert("Profile updated successfully!");
+      } catch (err) {
+          alert("Failed to update profile");
+      }
+  };
 
-  const addToStack = (event, teamData = null) => {
-    // Check if already in stack
-    if (eventStack.find(item => item.event_id === event.id)) {
-      alert("Already in your stack!");
-      return;
+  const addToStack = (event, teamData = null, forceUpdate = false) => {
+    if (!forceUpdate && eventStack.find(item => item.event_id === event.id)) { 
+        alert("Already in your stack!"); 
+        return; 
     }
-
+    const otherItems = eventStack.filter(item => item.event_id !== event.id);
     const item = {
-      event_id: event.id,
-      name: event.name,
-      fee: event.fee,
-      type: event.type,
-      // If group, attach details. If solo, these are null/empty
-      team_name: teamData ? teamData.teamName : null,
+      event_id: event.id, name: event.name, fee: event.fee, type: event.type,
       teammates: teamData ? teamData.teammates : []
     };
-
-    setEventStack([...eventStack, item]);
-    setSelectedEvent(null); // Close modal if open
-    // Reset form
-    setTeamName('');
+    setEventStack([...otherItems, item]);
+    setSelectedEvent(null); 
     setTeammates([{ name: '', email: '' }]);
   };
 
-  const removeFromStack = (eventId) => {
-    setEventStack(eventStack.filter(item => item.event_id !== eventId));
-  };
-
+  const removeFromStack = (eventId) => setEventStack(eventStack.filter(item => item.event_id !== eventId));
   const calculateTotal = () => eventStack.reduce((sum, item) => sum + item.fee, 0);
 
-  // --- CHECKOUT LOGIC (BULK REGISTER) ---
+  const handleEditTeam = (stackItem) => {
+      const originalEvent = availableEvents.find(e => e.id === stackItem.event_id);
+      if (!originalEvent) return;
+      setTeammates(stackItem.teammates);
+      setSelectedEvent(originalEvent);
+  };
 
   const handleCheckout = async () => {
+    setIsProcessingPayment(true);
     try {
       const payload = {
         leader_uid: user.uid,
-        items: eventStack.map(item => ({
-          event_id: item.event_id,
-          team_name: item.team_name,
-          teammates: item.teammates
-        })),
+        items: eventStack.map(item => ({ event_id: item.event_id, teammates: item.teammates })),
         payment_mode: paymentMode,
-        // Mocking Online Payment for now as requested
-        razorpay_payment_id: paymentMode === 'ONLINE' ? "pay_mock_123456" : null,
         cash_token: paymentMode === 'CASH' ? cashToken : null
       };
 
+      // 1. Register
       const res = await API.post('/events/register-bulk', payload);
-      
-      alert(`Success! ${res.data.message}`);
-      setEventStack([]); // Clear stack
-      setIsCheckoutOpen(false);
-      setCashToken('');
-      fetchDashboardData(); // Refresh to see new registered events
 
-    } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.detail || "Registration Failed");
+      if (paymentMode === 'CASH') {
+          alert(`Success! ${res.data.message}`);
+          setEventStack([]); 
+          setIsCheckoutOpen(false); 
+          setCashToken('');
+          fetchDashboardData();
+          setIsProcessingPayment(false);
+      } 
+      else if (paymentMode === 'ONLINE') {
+          // 2. Launch Cashfree SDK
+          const { payment_session_id, order_id } = res.data.payment_data;
+          
+          if (!payment_session_id) {
+            alert("Error: Server did not return a payment session.");
+            return;
+          }
+
+          const cashfree = await load({ mode: "sandbox" });
+          cashfree.checkout({
+              paymentSessionId: payment_session_id,
+              redirectTarget: "_self",
+              returnUrl: window.location.origin + `/payment-status?order_id=${order_id}`
+          });
+      }
+
+    } catch (err) { 
+        console.error(err); 
+        alert(err.response?.data?.detail || "Registration Failed");  
+        setIsProcessingPayment(false);
     }
   };
-
-  // --- RENDER HELPERS ---
   
   const handleTeammateChange = (idx, field, val) => { const newM = [...teammates]; newM[idx][field] = val; setTeammates(newM); };
+  
   const addTeammateRow = () => teammates.length < (selectedEvent.max_team_size - 1) ? setTeammates([...teammates, { name: '', email: '' }]) : alert("Max size reached");
+  
+  const removeTeammate = (index) => {
+    const newM = teammates.filter((_, i) => i !== index);
+    setTeammates(newM);
+  };
 
-  if (loading) return <div className="page-container">Loading...</div>;
+  const isSpotMode = sessionStorage.getItem('spotMode') === 'true';
+
+  // --- RENDER GUARDS (PREVENTS CRASH) ---
+ 
+  if (loading) return <Loading message="Loading Dashboard..." />;
+  if (isProcessingPayment) return <Loading message="Redirecting to Payment Gateway..." />;
+  if (!user) return <Loading message="Redirecting..." />;
+  
 
   return (
-    <div className="dashboard-container" style={{ paddingBottom: '100px' }}> {/* Padding for floating bar */}
+    <div className="dashboard-container" style={{ paddingBottom: '100px' }}>
       
       {/* 1. HEADER */}
-      <div className="glass-card" style={{ marginBottom: '3rem', display: 'flex', flexWrap: 'wrap', gap: '2rem', alignItems: 'center' }}>
+      <div className="glass-card" style={{ marginBottom: '3rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h1 style={{ fontSize: '2.5rem', margin: 0 }}>{user.name}</h1>
-          <span className="badge badge-neutral">{user.uid}</span>
+          <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <h1 style={{ fontSize: '2.3rem', margin: 0 }}>{user.name}</h1>
+              <button 
+                onClick={() => setIsEditOpen(true)}
+                style={{
+                    background: 'rgba(255,255,255,0.1)', border: 'none', 
+                    borderRadius: '50%', width: '35px', height: '35px', 
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1.2rem'
+                }}
+                title="Edit Profile"
+              >
+                ✎
+              </button>
+          </div>
+          <span className="badge badge-neutral" style={{fontSize: '1.2rem', marginTop:'rem'}}>{user.uid}</span>
         </div>
-      </div>
+        </div>
+      
 
-      {/* 2. MY REGISTERED EVENTS */}
+      {/* EDIT PROFILE MODAL */}
+      {isEditOpen && (
+        <div className="modal-overlay">
+            <div className="glass-card modal-content">
+                <h2 style={{ marginBottom: '1.5rem' }}>Edit Profile</h2>
+                <form onSubmit={handleUpdateProfile}>
+                    <div style={{marginBottom:'1rem'}}>
+                        <label style={{display:'block', marginBottom:'5px', color:'var(--text-muted)'}}>Full Name</label>
+                        <input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} required />
+                    </div>
+                    <div style={{marginBottom:'1rem'}}>
+                        <label style={{display:'block', marginBottom:'5px', color:'var(--text-muted)'}}>Phone</label>
+                        <input value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} required />
+                    </div>
+                    <div style={{marginBottom:'1rem'}}>
+                        <label style={{display:'block', marginBottom:'5px', color:'var(--text-muted)'}}>College</label>
+                        <input value={editForm.college} onChange={e => setEditForm({...editForm, college: e.target.value})} required />
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setIsEditOpen(false)}>Cancel</button>
+                    <button type="submit" className="btn">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {/* 2. REGISTERED EVENTS */}
       <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-muted)' }}>REGISTERED EVENTS</h3>
       <div className="grid-cards" style={{ marginBottom: '4rem' }}>
         {myEvents.length === 0 && <div style={{ color: 'var(--text-muted)' }}>No confirmed registrations yet.</div>}
@@ -144,7 +248,9 @@ const Dashboard = () => {
       <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-muted)' }}>AVAILABLE EVENTS</h3>
       <div className="grid-cards">
         {availableEvents.map(event => {
-          const isInStack = eventStack.find(i => i.event_id === event.id);
+          const stackItem = eventStack.find(i => i.event_id === event.id);
+          const isInStack = !!stackItem;
+          
           return (
             <div key={event.id} className="glass-card" style={{ display: 'flex', flexDirection: 'column', borderColor: isInStack ? 'var(--primary)' : 'var(--glass-border)' }}>
               <div style={{ flex: 1 }}>
@@ -153,97 +259,71 @@ const Dashboard = () => {
                   <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>₹{event.fee}</span>
                 </div>
                 <h3 style={{ fontSize: '1.5rem' }}>{event.name}</h3>
-                <p style={{ color: 'var(--text-muted)' }}>Max Team: {event.max_team_size}</p>
+                {event.type === 'GROUP' && (<p style={{ color: 'var(--text-muted)' }}>Team Size: {event.min_team_size} - {event.max_team_size}</p>)}
               </div>
-
+              
               {isInStack ? (
-                <button className="btn btn-secondary" style={{ marginTop: '1.5rem', borderColor: 'var(--danger)', color: 'var(--danger)' }} onClick={() => removeFromStack(event.id)}>
-                  Remove from Stack
-                </button>
+                <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.5rem' }}>
+                    <button className="btn btn-secondary" style={{ borderColor: 'var(--danger)', color: 'var(--danger)', flex: 1 }} onClick={() => removeFromStack(event.id)}>Remove</button>
+                    {event.type === 'GROUP' && (<button className="btn btn-secondary" style={{ flex: 1, borderColor: 'var(--primary)', color: 'white' }} onClick={() => handleEditTeam(stackItem)}>Edit Team</button>)}
+                </div>
               ) : (
-                <button className="btn" style={{ marginTop: '1.5rem' }} onClick={() => {
-                  if (event.type === 'SOLO') addToStack(event);
-                  else setSelectedEvent(event); // Open modal for Group
-                }}>
-                  Add to Stack +
-                </button>
+                <button className="btn" style={{ marginTop: '1.5rem' }} onClick={() => { if (event.type === 'SOLO') addToStack(event); else setSelectedEvent(event); }}>Add to Stack +</button>
               )}
             </div>
           );
         })}
       </div>
 
-      {/* 4. FLOATING ACTION BAR (The "Stack") */}
-      {eventStack.length > 0 && (
+      {/* 4. FLOATING STACK BAR */}
+      {!isCheckoutOpen&& (
+       eventStack.length > 0 && (
         <div style={{
-          position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)',
-          width: '90%', maxWidth: '600px',
-          background: 'rgba(20, 20, 25, 0.9)', backdropFilter: 'blur(12px)',
-          border: '1px solid var(--primary)', borderRadius: '100px',
-          padding: '1rem 2rem', boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 90
+          position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)', width: '90%', maxWidth: '600px',
+          background: 'rgba(20, 20, 25, 0.9)', backdropFilter: 'blur(12px)', border: '1px solid var(--primary)', borderRadius: '100px',
+          padding: '1rem 2rem', boxShadow: '0 10px 40px rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 90
         }}>
+          
           <div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>EVENT STACK</div>
             <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{eventStack.length} Items • ₹{calculateTotal()}</div>
-          </div>
-          <button className="btn" style={{ width: 'auto', padding: '10px 30px', borderRadius: '50px' }} onClick={() => setIsCheckoutOpen(true)}>
-            Checkout →
-          </button>
+            </div>
+          
+          <button className="btn" style={{ width: 'auto', padding: '10px 30px', borderRadius: '50px' }} onClick={() => setIsCheckoutOpen(true)}>Checkout →</button>
+          
         </div>
-      )}
+          )
+        )}
 
-      {/* 5. GROUP DETAILS MODAL */}
+      {/* 5. TEAM MODAL */}
       {selectedEvent && (
         <div className="modal-overlay">
           <div className="glass-card modal-content">
             <h2 style={{ marginBottom: '0.5rem' }}>Configure Team</h2>
             <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>For {selectedEvent.name}</p>
-            
             <form onSubmit={async (e) => {
                   e.preventDefault();
-                  
-                  // 1. Filter empty emails
                   const validTeammates = teammates.filter(t => t.email.trim() !== '');
+                  const totalParticipants = 1 + validTeammates.length;
+                  if (totalParticipants < selectedEvent.min_team_size) {
+                      alert(`⚠️ Minimum Requirement Not Met\n\nThis event requires at least ${selectedEvent.min_team_size} participants.\nYou currently have ${totalParticipants} (You + ${validTeammates.length} teammates).`);
+                      return;
+                  }
                   const emailsToCheck = validTeammates.map(t => t.email);
-
-                  // 2. Validate with Backend BEFORE adding to stack
                   if (emailsToCheck.length > 0) {
                     try {
-                      // Show simple loading state (optional)
-                      const res = await API.post('/events/validate-team', {
-                        event_id: selectedEvent.id,
-                        emails: emailsToCheck,
-                        leader_uid: user.uid // <--- FIX ADDED HERE
-                      });
-
-                      if (!res.data.valid) {
-                        // CONFLICT FOUND! Show alert and STOP.
-                        alert(res.data.detail); 
-                        return; 
-                      }
-                    } catch (err) {
-                      console.error(err);
-                      alert("Validation failed. Check internet connection.");
-                      return;
-                    }
+                      const res = await API.post('/events/validate-team', { event_id: selectedEvent.id, emails: emailsToCheck, leader_uid: user.uid });
+                      if (!res.data.valid) { alert(res.data.detail); return; }
+                    } catch (err) { console.error(err); alert("Validation failed."); return; }
                   }
-
-                  // 3. If Valid (or Solo), Add to Stack
-                  addToStack(selectedEvent, { teamName, teammates: validTeammates });
+                  addToStack(selectedEvent, { teammates: validTeammates }, true);
                 }}>
-              <div className="form-group">
-                <label>Team Name</label>
-                <input required placeholder="Code Warriors" value={teamName} onChange={e => setTeamName(e.target.value)} />
-              </div>
-              <div style={{marginBottom:'0.5rem', display:'flex', justifyContent:'space-between'}}>
-                <label>Teammates</label>
-                <button type="button" onClick={addTeammateRow} className="btn-ghost" style={{fontSize:'0.8rem'}}>+ Add</button>
-              </div>
+              <div style={{marginBottom:'0.5rem', display:'flex', justifyContent:'space-between'}}><label>Teammates</label><button type="button" onClick={addTeammateRow} className="btn-ghost" style={{fontSize:'0.8rem'}}>+ Add</button></div>
               {teammates.map((mate, idx) => (
-                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
                   <input required placeholder="Name" value={mate.name} onChange={e => handleTeammateChange(idx, 'name', e.target.value)} />
                   <input required type="email" placeholder="Email" value={mate.email} onChange={e => handleTeammateChange(idx, 'email', e.target.value)} />
+                  <button type="button" onClick={() => removeTeammate(idx)} style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }} title="Remove Teammate">✕</button>
                 </div>
               ))}
               <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
@@ -260,73 +340,60 @@ const Dashboard = () => {
         <div className="modal-overlay">
           <div className="glass-card modal-content">
             <h2 style={{ marginBottom: '1.5rem' }}>Confirm Registration</h2>
-            
-            {/* List Items */}
             <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem' }}>
               {eventStack.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
-                  <span>{item.name}</span>
-                  <span>₹{item.fee}</span>
-                </div>
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.9rem' }}><span>{item.name}</span><span>₹{item.fee}</span></div>
               ))}
-              <div style={{ borderTop: '1px solid var(--glass-border)', marginTop: '0.5rem', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                <span>TOTAL</span>
-                <span style={{ color: 'var(--primary)' }}>₹{calculateTotal()}</span>
-              </div>
+              <div style={{ borderTop: '1px solid var(--glass-border)', marginTop: '0.5rem', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}><span>TOTAL</span><span style={{ color: 'var(--primary)' }}>₹{calculateTotal()}</span></div>
             </div>
-
-            {/* Payment Mode Tabs */}
+            
+            {/* --- PAYMENT METHOD BUTTONS --- */}
+            {isSpotMode && (
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
               <button 
-                onClick={() => setPaymentMode('ONLINE')}
-                className={paymentMode === 'ONLINE' ? 'btn' : 'btn btn-secondary'}
+                onClick={() => setPaymentMode('ONLINE')} 
+                className={paymentMode === 'ONLINE' ? 'btn' : 'btn btn-secondary'} 
                 style={{ flex: 1 }}
               >
-                Online Pay
+                Online Payment
               </button>
-              <button 
-                onClick={() => setPaymentMode('CASH')}
-                className={paymentMode === 'CASH' ? 'btn' : 'btn btn-secondary'}
-                style={{ flex: 1 }}
-              >
-                Cash Desk
-              </button>
+              
+              
+                  <button 
+                    onClick={() => setPaymentMode('CASH')} 
+                    className={paymentMode === 'CASH' ? 'btn' : 'btn btn-secondary'} 
+                    style={{ flex: 1 }}
+                  >
+                    Cash Desk
+                  </button>
+              
             </div>
+            )}
 
-            {/* Payment Actions */}
             {paymentMode === 'ONLINE' && (
-              <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                  Mock Online Payment is enabled. <br/>(No money will be deducted)
-                </p>
-                <button className="btn" onClick={handleCheckout}>Pay & Register</button>
-              </div>
+                <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                    <button className="btn" onClick={handleCheckout}>Pay & Register</button>
+                </div>
             )}
-
-            {paymentMode === 'CASH' && (
-              <div>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                  Enter the Token given by the Volunteer:
-                </p>
-                <input 
-                  placeholder="e.g. CASH-8X92" 
-                  value={cashToken} 
-                  onChange={e => setCashToken(e.target.value)} 
-                  style={{ textAlign: 'center', fontSize: '1.2rem', letterSpacing: '2px', marginBottom: '1rem' }}
-                />
-                <button className="btn" onClick={handleCheckout}>Validate Token & Register</button>
-              </div>
+            
+            {paymentMode === 'CASH' && isSpotMode && (
+                <div>
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Enter Token:</p>
+                    <input 
+                        placeholder="e.g. 8X9B2" 
+                        value={cashToken} 
+                        onChange={e => setCashToken(e.target.value.toUpperCase())} 
+                        style={{ textAlign: 'center', fontSize: '1.2rem', letterSpacing: '2px', marginBottom: '1rem' }}
+                    />
+                    <button className="btn" onClick={handleCheckout}>Validate & Register</button>
+                </div>
             )}
-
-            <button className="btn-ghost" style={{ width: '100%', marginTop: '1rem' }} onClick={() => setIsCheckoutOpen(false)}>
-              Cancel
-            </button>
+            
+            <button className="btn btn-secondary" style={{ width: '100%', marginTop: '1rem', borderColor: 'var(--danger)', color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.05)' }} onClick={() => setIsCheckoutOpen(false)}> Cancel </button>
           </div>
         </div>
       )}
-
     </div>
   );
 };
-
 export default Dashboard;

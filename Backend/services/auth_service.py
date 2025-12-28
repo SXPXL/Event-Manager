@@ -2,7 +2,8 @@ from sqlmodel import Session, select
 from fastapi import HTTPException
 from models.user import User, Volunteer
 from schemas.user_schemas import UserCreateUpdate
-from utils.email import generate_uid, mock_send_email
+from utils.email import generate_uid 
+# Removed mock_send_email import here, as the Route handles it now
 
 def check_uid_logic(uid: str, session: Session):
     user = session.exec(select(User).where(User.uid == uid)).first()
@@ -13,13 +14,12 @@ def register_user_logic(user_data: UserCreateUpdate, session: Session):
     existing_user = session.exec(select(User).where(User.email == user_data.email)).first()
 
     if existing_user:
-        # STRICT BLOCK: No email sent. Just an error message.
         raise HTTPException(
             status_code=400, 
             detail="Email already registered. Please search your inbox for your UID."
         )
 
-    # Brand New User (Only send email here)
+    # Brand New User
     new_uid = generate_uid()
     while session.exec(select(User).where(User.uid == new_uid)).first():
         new_uid = generate_uid()
@@ -36,8 +36,8 @@ def register_user_logic(user_data: UserCreateUpdate, session: Session):
     session.commit()
     session.refresh(user)
     
-    # Send UID only for brand new registrations
-    mock_send_email(user.email, user.uid, user.name)
+    # NOTE: We do NOT send email here anymore. 
+    # We return the user, and the Route adds the BackgroundTask.
     
     return user, "Registration successful!"
 

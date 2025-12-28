@@ -10,7 +10,7 @@ class User(SQLModel, table=True):
     phone: Optional[str] = None
     college: Optional[str] = None
     is_shadow: bool = Field(default=False)
-    payment_status: PaymentStatus = Field(default=PaymentStatus.UNPAID)
+    payment_status: PaymentStatus = Field(default=PaymentStatus.PENDING)
 
 class Volunteer(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

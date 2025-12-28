@@ -1,20 +1,69 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 from database import get_session
-from schemas.staff_schemas import TokenRequest, MarkAttendanceRequest, MarkPaymentRequest
-from services import payment_service, staff_service
+from services import staff_service, export_service , payment_service
+from schemas.staff_schemas import * 
+from utils.cashToken import generate_cash_token_logic
+
 
 router = APIRouter()
 
-@router.post("/staff/generate-token", tags=["Cashier"])
-def generate_token(req: TokenRequest, session: Session = Depends(get_session)):
-    code = payment_service.generate_cash_token_logic(req.amount, req.volunteer_id, session)
-    return {"token": code, "amount": req.amount}
+@router.post("/staff/walk-in-register", tags=["Staff"])
+def walk_in_register(req: WalkInBulkRequest, session: Session = Depends(get_session)):
+    result = staff_service.walk_in_bulk_registration_logic(req, session)
+    return {"status": "success", "data": result}
 
-@router.post("/staff/mark-attendance", tags=["Guard"])
+@router.get("/staff/search", tags=["Staff"])
+def search_user(q: str, session: Session = Depends(get_session)):
+    return staff_service.search_users_logic(q, session)
+
+@router.post("/staff/mark-attendance", tags=["Staff"])
 def mark_attendance(req: MarkAttendanceRequest, session: Session = Depends(get_session)):
-    msg, name = staff_service.mark_attendance_logic(req.user_uid, req.event_id, session)
-    return {"message": msg, "user_name": name}
+    return staff_service.mark_attendance_logic(req.user_uid, req.event_id, session)
 
-# Mark Paid (Optional, if you still want manual payment)
-# @router.post("/staff/mark-paid") ...
+@router.post("/staff/generate-token", tags=["Staff"])
+def generate_token(req: TokenRequest, session: Session = Depends(get_session)):
+    # Fix: Ensure args match service definition order
+    return generate_cash_token_logic(req.amount, req.volunteer_id, session)
+
+@router.get("/staff/user-profile/{uid}", tags=["Staff"])
+def get_user_profile(uid: str, session: Session = Depends(get_session)):
+    return staff_service.get_user_full_profile(uid, session)
+
+@router.get("/staff/export/event/{event_id}")
+def export_event_data(
+    event_id: int, 
+    filter_status: str = Query("ALL", alias="filter"), # <--- Fix: alias="filter" keeps URL ?filter=... working
+    sort: str = "NAME",
+    session: Session = Depends(get_session)
+):
+    """
+    Export event data with Filtering AND Sorting.
+    """
+    csv_file = export_service.generate_csv_logic(
+        session, 
+        event_id=event_id, 
+        filter_status=filter_status, 
+        sort_by=sort 
+    )
+    
+    return StreamingResponse(
+        csv_file,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=event_{event_id}_{sort}.csv"}
+    )
+
+@router.get("/admin/export/master")
+def export_master_data(session: Session = Depends(get_session)):
+    """
+    Export ALL data (Default Sort: Name).
+    """
+    # Fix: Correctly passing named arguments
+    csv_file = export_service.generate_csv_logic(session, event_id=None, filter_status="ALL", sort_by="NAME")
+    
+    return StreamingResponse(
+        csv_file,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=master_export.csv"}
+    )

@@ -1,5 +1,110 @@
-sam - EVT-1WRC5
-dani -EVT-XF30Z
-don - EVT-UUTZY
 
-new issue found: When a leader enters their own email again into the team details, a duplicate registration occurs for the leader showing the same event two tims
+
+2. new issue found: When a leader enters their own email again into the team details, a duplicate registration occurs for the leader showing the same event two tims
+-> fixed
+
+3. Need a better workflow for spot/walk in registration. Issue with grouped participation. Works well with solo events.
+-> fixed
+
+- data extraction- for registration volunteers, they must be able to export data as an excel file where they can collect every details of the participants based on their event. So there must be sorting options while extracting the data.
+ It must include every detail, name, phone, email, uid, college, team, etc.
+
+ for event volunteers, they must be able to export the data of the participants of the particular event also sorting like checked in etc should be available.
+
+admin must be able to access and export all kind of data including payment, amount , type etc and every other kind of data.
+->complete
+
+- certificate integration
+-> cancelled
+
+- a sort option in the participants for admin
+->complete
+
+4. make the cash payment available only for a spot registration link. - done
+
+5. qr integration - done, now remove it from the user dashboard and make it send via email.
+
+6. mail integration - 
+
+7. payment integration
+
+8. Button CSS - done
+
+9. Add qr scanner to cashier to make sure they have been given the id card(this is not necessary but will be useful)
+
+10. Making code deployment ready(adding env, viteconfig,etc etc)
+
+11. SQL Query injection prevention
+
+
+
+Small changes
+
+- add min no of teammates for an event. (default 2) - done
+
+- option for users to edit configur team after saving (two buttons remove, edit) - done
+
+- in configure team add a small x to remove added teammate from the current state. - done
+
+- onboarding data completion for shadow accounts - done
+
+- user profile editing - done
+
+- remove qr from user dashboard.(do it after mail integration)
+
+- proper delete button for event user (only in admin dashboard) type confirm to delete. - cancelled
+
+- create proper admin creation on startup by taking values from env -
+
+- reduce uid and cash token length - done
+
+- delete user and staff - done
+
+- check if the entered number is a valid phone number.
+
+- notification icon, mainly for showing payment status updates and stuff.
+
+- start,end time and date for events.
+
+- Instruction page with agree button. - say about not choosing events that could result in clashes like one event is scheduled for 10 to 11 other one is for 10:30 to 12.
+
+- cancel registration. (not preffered but still)
+
+- email verification by the system, keeps the user waiting until the email is sent, if it's succesfull registration will be complete else the registration to the system wont be saved. - 
+
+- after the payment status page when we click back it goes to the dashboard but after a few seconds it redirects to the landing page - fixed
+
+
+Notes:
+
+In the backend(ig dashboard.jsx there is a local host url hardcoded so it needs to be added to the env berfore deployment)
+
+Test results:
+result pending - reg success
+user dropped - reg success
+success - reg success
+
+conclusion - code checks if it goes to the pg and doesnt read the result - fixed by adding webhook and db polling
+
+- create 3 accounts for gmail..
+
+-- usercard data loading issue - done
+
+- cash token placeholder + input to all capital automatically - done
+
+- toggle for qr scan and manual input(without that there will be lag)
+
+
+
+FIXES
+
+Complete requirements.txt
+duplicate registration check 
+Proper Logging
+
+PRODUCTION CHECKS
+    db url to env
+    cors origin setup from env
+    
+
+ADD Loader everwhere

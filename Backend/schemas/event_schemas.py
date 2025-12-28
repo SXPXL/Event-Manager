@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Literal
-from models.enums import EventType, PaymentStatus
+from models.enums import EventType
 
 # --- Display Schemas ---
 class EventDisplay(BaseModel):
@@ -9,15 +9,21 @@ class EventDisplay(BaseModel):
     type: EventType
     fee: float
     max_team_size: int
-    # payment_status: PaymentStatus = PaymentStatus.UNPAID # (Optional: Add this if you want specific event status in UI)
+    min_team_size: int = 2
+    total_registrations: int = 0
+    total_attended: int = 0
+    revenue: float = 0.0
+    payment_status: Optional[str] = "PENDING"
+    team_name: Optional[str] = None
+    is_leader: bool = False
 
+# ... [Keep the rest of the file exactly as it was] ...
 class CheckUIDResponse(BaseModel):
     exists: bool
-    user: Optional["UserDetails"] = None # Forward ref
+    user: Optional["UserDetails"] = None 
     registered_events: List[EventDisplay] = [] 
     message: str
 
-# --- Registration Inputs ---
 class TeammateInput(BaseModel):
     name: str
     email: EmailStr
@@ -38,8 +44,8 @@ class EventCreate(BaseModel):
     type: EventType
     fee: float
     max_team_size: int
+    min_team_size: int = 2
 
-# --- Bulk / Cart Schemas ---
 class BulkItem(BaseModel):
     event_id: int
     team_name: Optional[str] = None
@@ -49,7 +55,7 @@ class BulkRegisterRequest(BaseModel):
     leader_uid: str
     items: List[BulkItem]
     payment_mode: Literal['ONLINE', 'CASH']
-    razorpay_payment_id: Optional[str] = None
+    order_id: Optional[str] = None
     cash_token: Optional[str] = None
 
 class TeamValidationRequest(BaseModel):
@@ -57,6 +63,13 @@ class TeamValidationRequest(BaseModel):
     emails: List[str]
     leader_uid: str
 
-# Need to update imports for forward refs
+class WalkInRequest(BaseModel):
+    name: str
+    email: str
+    phone: str
+    college: str
+    event_ids: List[int]
+    volunteer_id: int
+
 from .user_schemas import UserDetails
 CheckUIDResponse.update_forward_refs()

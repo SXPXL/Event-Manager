@@ -70,8 +70,8 @@ const Register = () => {
           </div>
 
           <div className="form-group">
-            <label>College (Optional)</label>
-            <input name="college" type="text" placeholder="XYZ Institute" value={formData.college} onChange={handleChange} />
+            <label>College</label>
+            <input name="college" type="text" required placeholder="XYZ Institute" value={formData.college} onChange={handleChange} />
           </div>
 
           <button type="submit" className="btn" disabled={loading} style={{ marginTop: '1rem' }}>
