@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import API from '../api';
 import { load } from '@cashfreepayments/cashfree-js';
-import Loading from './components/Loading'; // Ensure this path is correct
+import Loading from './components/Loading'; 
+import SkeletonCard from './components/SkeletonCard'; // <--- NEW IMPORT
+import EventInfoModal from './components/EventInfoModal'; // <--- NEW IMPORT
 
 const Dashboard = () => {
   const location = useLocation();
@@ -14,7 +16,6 @@ const Dashboard = () => {
   const [myEvents, setMyEvents] = useState([]);
   const [availableEvents, setAvailableEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showQr, setShowQr] = useState(false); 
 
   // --- EDIT PROFILE STATE ---
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -26,8 +27,9 @@ const Dashboard = () => {
   const [paymentMode, setPaymentMode] = useState('ONLINE'); 
   const [cashToken, setCashToken] = useState('');
 
-  // --- MODAL STATE ---
-  const [selectedEvent, setSelectedEvent] = useState(null);
+  // --- MODAL STATES ---
+  const [selectedEvent, setSelectedEvent] = useState(null); // For Team Config
+  const [viewingEvent, setViewingEvent] = useState(null);   // <--- NEW: For Info Modal
   const [teammates, setTeammates] = useState([{ name: '', email: '' }]);
 
   //payment processing
@@ -49,7 +51,6 @@ const Dashboard = () => {
         setUser(userRes.data.user);
         sessionStorage.setItem("active_user_uid", userRes.data.user.uid);
         
-        // --- PRE-FILL EDIT FORM ---
         setEditForm({
             name: userRes.data.user.name,
             phone: userRes.data.user.phone || '',
@@ -57,19 +58,12 @@ const Dashboard = () => {
         });
 
         const allRegistrations = userRes.data.registered_events || [];
-        
-        // 1. FILTER: Only show PAID events in the "Registered" section
         const confirmedEvents = allRegistrations.filter(e => e.payment_status === 'PAID');
         setMyEvents(confirmedEvents);
         
-        // 2. LOGIC: Define what counts as "Taken"
-        // If an event is PAID, remove it from Available.
-        // If it is FAILED, keep it in Available so they can try again!
         const takenEventIds = new Set(confirmedEvents.map(e => e.id));
-        
         setAvailableEvents((eventsRes.data || []).filter(e => !takenEventIds.has(e.id)));
       } else {
-        // User not found in DB
         navigate('/'); 
       }
     } catch (err) { 
@@ -91,11 +85,30 @@ const Dashboard = () => {
       }
   };
 
-  const addToStack = (event, teamData = null, forceUpdate = false) => {
-    if (!forceUpdate && eventStack.find(item => item.event_id === event.id)) { 
-        alert("Already in your stack!"); 
-        return; 
-    }
+  // --- NEW: LOGIC TO OPEN MODAL FIRST ---
+  const initiateAddEvent = (event) => {
+      // 1. Check if already in stack
+      if (eventStack.find(item => item.event_id === event.id)) { 
+          alert("Already in your stack!"); 
+          return; 
+      }
+      // 2. Open the Info/Terms Modal
+      setViewingEvent(event);
+  };
+
+  const confirmAddEvent = () => {
+      const event = viewingEvent;
+      setViewingEvent(null); // Close Info Modal
+
+      if (event.type === 'SOLO') {
+          addToStack(event);
+      } else {
+          // If Group, now open the Team Modal
+          setSelectedEvent(event);
+      }
+  };
+
+  const addToStack = (event, teamData = null) => {
     const otherItems = eventStack.filter(item => item.event_id !== event.id);
     const item = {
       event_id: event.id, name: event.name, fee: event.fee, type: event.type,
@@ -126,7 +139,6 @@ const Dashboard = () => {
         cash_token: paymentMode === 'CASH' ? cashToken : null
       };
 
-      // 1. Register
       const res = await API.post('/events/register-bulk', payload);
 
       if (paymentMode === 'CASH') {
@@ -138,13 +150,8 @@ const Dashboard = () => {
           setIsProcessingPayment(false);
       } 
       else if (paymentMode === 'ONLINE') {
-          // 2. Launch Cashfree SDK
           const { payment_session_id, order_id } = res.data.payment_data;
-          
-          if (!payment_session_id) {
-            alert("Error: Server did not return a payment session.");
-            return;
-          }
+          if (!payment_session_id) { alert("Error: No session."); return; }
 
           const cashfree = await load({ mode: "sandbox" });
           cashfree.checkout({
@@ -153,7 +160,6 @@ const Dashboard = () => {
               returnUrl: window.location.origin + `/payment-status?order_id=${order_id}`
           });
       }
-
     } catch (err) { 
         console.error(err); 
         alert(err.response?.data?.detail || "Registration Failed");  
@@ -162,22 +168,27 @@ const Dashboard = () => {
   };
   
   const handleTeammateChange = (idx, field, val) => { const newM = [...teammates]; newM[idx][field] = val; setTeammates(newM); };
-  
   const addTeammateRow = () => teammates.length < (selectedEvent.max_team_size - 1) ? setTeammates([...teammates, { name: '', email: '' }]) : alert("Max size reached");
-  
-  const removeTeammate = (index) => {
-    const newM = teammates.filter((_, i) => i !== index);
-    setTeammates(newM);
-  };
+  const removeTeammate = (index) => { const newM = teammates.filter((_, i) => i !== index); setTeammates(newM); };
 
   const isSpotMode = sessionStorage.getItem('spotMode') === 'true';
 
-  // --- RENDER GUARDS (PREVENTS CRASH) ---
- 
-  if (loading) return <Loading message="Loading Dashboard..." />;
-  if (isProcessingPayment) return <Loading message="Redirecting to Payment Gateway..." />;
-  if (!user) return <Loading message="Redirecting..." />;
+  // --- RENDER ---
   
+  // 1. Full Page Loading for Payment
+  if (isProcessingPayment) return <Loading message="Redirecting to Payment Gateway..." />;
+  
+  // 2. Initial Data Loading (Showing Skeleton)
+  if (loading || !user) {
+      return (
+        <div className="dashboard-container">
+            <div className="skeleton-box" style={{height:'100px', width:'100%', marginBottom:'2rem', borderRadius:'12px'}}></div>
+            <div className="grid-cards">
+                {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
+            </div>
+        </div>
+      );
+  }
 
   return (
     <div className="dashboard-container" style={{ paddingBottom: '100px' }}>
@@ -187,23 +198,11 @@ const Dashboard = () => {
         <div>
           <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
               <h1 style={{ fontSize: '2.3rem', margin: 0 }}>{user.name}</h1>
-              <button 
-                onClick={() => setIsEditOpen(true)}
-                style={{
-                    background: 'rgba(255,255,255,0.1)', border: 'none', 
-                    borderRadius: '50%', width: '35px', height: '35px', 
-                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '1.2rem'
-                }}
-                title="Edit Profile"
-              >
-                ✎
-              </button>
+              <button onClick={() => setIsEditOpen(true)} className="btn-icon" style={{fontSize: '1.2rem'}}>✎</button>
           </div>
-          <span className="badge badge-neutral" style={{fontSize: '1.2rem', marginTop:'rem'}}>{user.uid}</span>
+          <span className="badge badge-neutral" style={{fontSize: '1.2rem', marginTop:'0.5rem'}}>{user.uid}</span>
         </div>
-        </div>
-      
+      </div>
 
       {/* EDIT PROFILE MODAL */}
       {isEditOpen && (
@@ -224,8 +223,8 @@ const Dashboard = () => {
                         <input value={editForm.college} onChange={e => setEditForm({...editForm, college: e.target.value})} required />
                     </div>
                     <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-                    <button type="button" className="btn btn-secondary" onClick={() => setIsEditOpen(false)}>Cancel</button>
-                    <button type="submit" className="btn">Save Changes</button>
+                        <button type="button" className="btn btn-secondary" onClick={() => setIsEditOpen(false)}>Cancel</button>
+                        <button type="submit" className="btn">Save Changes</button>
                     </div>
                 </form>
             </div>
@@ -260,6 +259,13 @@ const Dashboard = () => {
                 </div>
                 <h3 style={{ fontSize: '1.5rem' }}>{event.name}</h3>
                 {event.type === 'GROUP' && (<p style={{ color: 'var(--text-muted)' }}>Team Size: {event.min_team_size} - {event.max_team_size}</p>)}
+                
+                {/* NEW: Show short description preview if available */}
+                {event.description && (
+                   <p style={{fontSize:'0.85rem', color:'#aaa', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden'}}>
+                       {event.description}
+                   </p>
+                )}
               </div>
               
               {isInStack ? (
@@ -268,7 +274,13 @@ const Dashboard = () => {
                     {event.type === 'GROUP' && (<button className="btn btn-secondary" style={{ flex: 1, borderColor: 'var(--primary)', color: 'white' }} onClick={() => handleEditTeam(stackItem)}>Edit Team</button>)}
                 </div>
               ) : (
-                <button className="btn" style={{ marginTop: '1.5rem' }} onClick={() => { if (event.type === 'SOLO') addToStack(event); else setSelectedEvent(event); }}>Add to Stack +</button>
+                <button 
+                    className="btn" 
+                    style={{ marginTop: '1.5rem' }} 
+                    onClick={() => initiateAddEvent(event)} // <--- UPDATED CLICK HANDLER
+                >
+                    Add to Stack +
+                </button>
               )}
             </div>
           );
@@ -276,26 +288,30 @@ const Dashboard = () => {
       </div>
 
       {/* 4. FLOATING STACK BAR */}
-      {!isCheckoutOpen&& (
-       eventStack.length > 0 && (
+      {!isCheckoutOpen && eventStack.length > 0 && (
         <div style={{
           position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)', width: '90%', maxWidth: '600px',
           background: 'rgba(20, 20, 25, 0.9)', backdropFilter: 'blur(12px)', border: '1px solid var(--primary)', borderRadius: '100px',
           padding: '1rem 2rem', boxShadow: '0 10px 40px rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 90
         }}>
-          
           <div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>EVENT STACK</div>
             <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{eventStack.length} Items • ₹{calculateTotal()}</div>
-            </div>
-          
+          </div>
           <button className="btn" style={{ width: 'auto', padding: '10px 30px', borderRadius: '50px' }} onClick={() => setIsCheckoutOpen(true)}>Checkout →</button>
-          
         </div>
-          )
-        )}
+      )}
 
-      {/* 5. TEAM MODAL */}
+      {/* 5. NEW EVENT INFO MODAL */}
+      {viewingEvent && (
+          <EventInfoModal 
+            event={viewingEvent} 
+            onClose={() => setViewingEvent(null)} 
+            onConfirm={confirmAddEvent} 
+          />
+      )}
+
+      {/* 6. TEAM MODAL (Already Existing) */}
       {selectedEvent && (
         <div className="modal-overlay">
           <div className="glass-card modal-content">
@@ -306,17 +322,10 @@ const Dashboard = () => {
                   const validTeammates = teammates.filter(t => t.email.trim() !== '');
                   const totalParticipants = 1 + validTeammates.length;
                   if (totalParticipants < selectedEvent.min_team_size) {
-                      alert(`⚠️ Minimum Requirement Not Met\n\nThis event requires at least ${selectedEvent.min_team_size} participants.\nYou currently have ${totalParticipants} (You + ${validTeammates.length} teammates).`);
+                      alert(`⚠️ Minimum Requirement Not Met\n\nThis event requires at least ${selectedEvent.min_team_size} participants.\nYou currently have ${totalParticipants}.`);
                       return;
                   }
-                  const emailsToCheck = validTeammates.map(t => t.email);
-                  if (emailsToCheck.length > 0) {
-                    try {
-                      const res = await API.post('/events/validate-team', { event_id: selectedEvent.id, emails: emailsToCheck, leader_uid: user.uid });
-                      if (!res.data.valid) { alert(res.data.detail); return; }
-                    } catch (err) { console.error(err); alert("Validation failed."); return; }
-                  }
-                  addToStack(selectedEvent, { teammates: validTeammates }, true);
+                  addToStack(selectedEvent, { teammates: validTeammates });
                 }}>
               <div style={{marginBottom:'0.5rem', display:'flex', justifyContent:'space-between'}}><label>Teammates</label><button type="button" onClick={addTeammateRow} className="btn-ghost" style={{fontSize:'0.8rem'}}>+ Add</button></div>
               {teammates.map((mate, idx) => (
@@ -335,7 +344,7 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* 6. CHECKOUT MODAL */}
+      {/* 7. CHECKOUT MODAL (Already Existing) */}
       {isCheckoutOpen && (
         <div className="modal-overlay">
           <div className="glass-card modal-content">
@@ -347,48 +356,20 @@ const Dashboard = () => {
               <div style={{ borderTop: '1px solid var(--glass-border)', marginTop: '0.5rem', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}><span>TOTAL</span><span style={{ color: 'var(--primary)' }}>₹{calculateTotal()}</span></div>
             </div>
             
-            {/* --- PAYMENT METHOD BUTTONS --- */}
             {isSpotMode && (
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-              <button 
-                onClick={() => setPaymentMode('ONLINE')} 
-                className={paymentMode === 'ONLINE' ? 'btn' : 'btn btn-secondary'} 
-                style={{ flex: 1 }}
-              >
-                Online Payment
-              </button>
-              
-              
-                  <button 
-                    onClick={() => setPaymentMode('CASH')} 
-                    className={paymentMode === 'CASH' ? 'btn' : 'btn btn-secondary'} 
-                    style={{ flex: 1 }}
-                  >
-                    Cash Desk
-                  </button>
-              
+              <button onClick={() => setPaymentMode('ONLINE')} className={paymentMode === 'ONLINE' ? 'btn' : 'btn btn-secondary'} style={{ flex: 1 }}>Online Payment</button>
+              <button onClick={() => setPaymentMode('CASH')} className={paymentMode === 'CASH' ? 'btn' : 'btn btn-secondary'} style={{ flex: 1 }}>Cash Desk</button>
             </div>
             )}
 
-            {paymentMode === 'ONLINE' && (
-                <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-                    <button className="btn" onClick={handleCheckout}>Pay & Register</button>
-                </div>
-            )}
-            
+            {paymentMode === 'ONLINE' && <div style={{ textAlign: 'center', marginBottom: '1rem' }}><button className="btn" onClick={handleCheckout}>Pay & Register</button></div>}
             {paymentMode === 'CASH' && isSpotMode && (
                 <div>
-                    <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Enter Token:</p>
-                    <input 
-                        placeholder="e.g. 8X9B2" 
-                        value={cashToken} 
-                        onChange={e => setCashToken(e.target.value.toUpperCase())} 
-                        style={{ textAlign: 'center', fontSize: '1.2rem', letterSpacing: '2px', marginBottom: '1rem' }}
-                    />
+                    <input placeholder="e.g. 8X9B2" value={cashToken} onChange={e => setCashToken(e.target.value.toUpperCase())} style={{ textAlign: 'center', fontSize: '1.2rem', letterSpacing: '2px', marginBottom: '1rem' }} />
                     <button className="btn" onClick={handleCheckout}>Validate & Register</button>
                 </div>
             )}
-            
             <button className="btn btn-secondary" style={{ width: '100%', marginTop: '1rem', borderColor: 'var(--danger)', color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.05)' }} onClick={() => setIsCheckoutOpen(false)}> Cancel </button>
           </div>
         </div>
@@ -396,4 +377,5 @@ const Dashboard = () => {
     </div>
   );
 };
+
 export default Dashboard;

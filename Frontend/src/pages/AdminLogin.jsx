@@ -10,25 +10,23 @@ const AdminLogin = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
+      // 1. New Endpoint: Matches Backend/api/auth_routes.py
       const res = await API.post('/admin/login', creds);
-      localStorage.setItem('token', res.data.token);
+      
+      // 2. Save Token: Key must be 'admin_token' to match api.js
+      localStorage.setItem('admin_token', res.data.access_token);
     
-    // 2. Create the User Object (combining role, name, id)
-    const userData = {
-      id: res.data.id,       // Crucial for Walk-in/Cashier
-      name: res.data.name || res.data.username, 
-      role: res.data.role
-    };
+      // 3. Save User: The backend now gives a clean 'user' object in the response
+      localStorage.setItem('admin_user', JSON.stringify(res.data.user));
 
-    // 3. Save as a JSON string with the key 'user'
-    localStorage.setItem('user', JSON.stringify(userData));
+      // 4. Redirect to Dashboard
+      navigate('/admin/dashboard'); 
 
-    // 4. Redirect to Dashboard
-    navigate('/admin/dashboard'); 
-
-  } catch (err) {
-    alert("Login Failed");
-  }
+    } catch (err) {
+      console.error(err);
+      // Show the specific error message from the backend (e.g. "Invalid credentials")
+      alert("Login Failed: " + (err.response?.data?.detail || 'Unknown error') );
+    }
 };
 
   return (

@@ -5,6 +5,7 @@ import StaffWalkIn from './components/StaffWalkIn';
 import ReportsPanel from './components/ReportsPanel'; 
 import { Scanner } from '@yudiel/react-qr-scanner'; 
 import UserCard from './components/UserCard';
+import GuardEventView from './components/GuardEventView';
 
 // --- RESPONSIVE CSS STYLES ---
 // You can move this content to your index.css
@@ -59,20 +60,32 @@ const AdminDashboard = () => {
   const [allEvents, setAllEvents] = useState([]);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
+    // 1. Check for the NEW key names
+    const token = localStorage.getItem('admin_token');
+    const storedUser = localStorage.getItem('admin_user'); // <--- WAS 'user'
+
+    if (token && storedUser) {
       const u = JSON.parse(storedUser);
       setUser(u);
+      
       // If Guard, fetch events immediately to show selector
       if(u.role === 'GUARD') {
           API.get('/events').then(res => setAllEvents(res.data));
       }
     } else {
+      // If either is missing, force login
       navigate('/admin');
     }
-  }, [navigate]);
+}, [navigate]);
 
-  const handleLogout = () => { localStorage.removeItem('user'); navigate('/admin'); };
+  const handleLogout = () => {
+    if(confirm("Sign out?")) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_user');
+        window.location.href = '/admin';
+    }
+};
+
 
   if (!user) return <div className="page-container">Loading...</div>;
   const role = user.role; 
@@ -87,6 +100,7 @@ const AdminDashboard = () => {
           { id: 'reports', label: '📥 Reports & Data' },
           { id: 'walkin', label: '⚡ Walk-in Registration' },
           { id: 'guard', label: '🛡️ Gate Scanner' },
+          { id: 'guard-list', label: '📋 Attendance Sheet' },
           { id: 'volunteers', label: '👥 Manage Staff' },
           { id: 'users', label: '🎓 Participants Database' },
           { id: 'search', label: '🔍 Search Participant' },
@@ -100,6 +114,7 @@ const AdminDashboard = () => {
       ];
       if (role === 'GUARD') return [
           { id: 'guard', label: '🛡️ Gate Scanner' },
+          { id: 'guard-list', label: '📋 Attendance Sheet' },
           { id: 'reports', label: '📥 Reports' },
       ];
       return [];
@@ -172,6 +187,7 @@ const AdminDashboard = () => {
             {/* Pass guardEvent to constrained panels */}
             {activeTab === 'guard' && <GuardPanel forcedEvent={guardEvent} />}
             {activeTab === 'reports' && <ReportsPanel role={role} forcedEvent={guardEvent} />}
+            {activeTab === 'guard-list' && <GuardEventView forcedEvent={guardEvent} />}
 
             {/* Other Components */}
             {activeTab === 'events' && <EventsManager />}
@@ -191,18 +207,38 @@ const AdminDashboard = () => {
    ========================================= */
 
 // 1. EVENTS MANAGER
+
+// Inside AdminDashboard.jsx or wherever EventsManager is defined
+
 const EventsManager = () => {
   const [events, setEvents] = useState([]);
-  const [form, setForm] = useState({ name: '', type: 'SOLO', fee: 0, min_team_size: 2, max_team_size: 5 }); 
+  const [showModal, setShowModal] = useState(false); // <--- NEW STATE FOR MODAL
+
+  // Form State
+  const [form, setForm] = useState({ 
+      name: '', type: 'SOLO', fee: 0, 
+      min_team_size: 2, max_team_size: 5,
+      description: '', date: '', start_time: '', end_time: ''
+  }); 
 
   useEffect(() => { load(); }, []);
   const load = async () => { const res = await API.get('/events'); setEvents(res.data); };
   
   const handleCreate = async (e) => { 
       e.preventDefault(); 
-      await API.post('/events', form); 
-      load(); 
-      setForm({ name: '', type: 'SOLO', fee: 0, min_team_size: 2, max_team_size: 5 }); 
+      try {
+          await API.post('/events', form); 
+          load(); 
+          // Reset & Close
+          setForm({ 
+              name: '', type: 'SOLO', fee: 0, 
+              min_team_size: 2, max_team_size: 5,
+              description: '', date: '', start_time: '', end_time: ''
+          }); 
+          setShowModal(false); // <--- Close Modal on Success
+      } catch(err) {
+          alert("Failed to create event. Check inputs.");
+      }
   };
 
   const totalRevenue = events.reduce((sum, e) => sum + (e.revenue || 0), 0);
@@ -216,34 +252,163 @@ const EventsManager = () => {
             alert("Failed to delete event. It might have active registrations.");
         }
     }
-};
+  };
 
   return (
     <div>
+      {/* HEADER */}
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem', flexWrap:'wrap', gap:'10px'}}>
-        <h3 style={{margin:0}}>Manage Events</h3>
+        <div style={{display:'flex', alignItems:'center', gap:'1rem'}}>
+            <h3 style={{margin:0}}>Manage Events</h3>
+        </div>
         <div className="badge badge-success" style={{fontSize:'1.1rem'}}>Total Revenue: ₹{totalRevenue}</div>
+        {/* NEW ADD BUTTON */}
       </div>
+      <button 
+                className="btn" 
+                onClick={() => setShowModal(true)}
+                style={{padding:'5px 15px', fontSize:'0.9rem',marginBottom:'20px',maxWidth:'150px'}}
+            >
+                + ADD EVENT
+            </button>
 
-      <form onSubmit={handleCreate} className="dashboard-grid-form events-form" style={{ marginBottom: '2rem' }}>
-        <input placeholder="Event Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
-        <select value={form.type} onChange={e => setForm({...form, type: e.target.value})}><option value="SOLO">SOLO</option><option value="GROUP">GROUP</option></select>
-        <input type="number" placeholder="Fee" value={form.fee} onChange={e => setForm({...form, fee: e.target.value})} />
-        <input type="number" placeholder="Min" value={form.min_team_size} onChange={e => setForm({...form, min_team_size: e.target.value})} title="Min Team Size" />
-        <input type="number" placeholder="Max" value={form.max_team_size} onChange={e => setForm({...form, max_team_size: e.target.value})} title="Max Team Size" />
-        <button className="btn" style={{padding: '0 20px'}}>Add</button>
-      </form>
+      {/* POPUP MODAL FORM */}
+      {showModal && (
+        <div className="modal-overlay">
+            <div className="glass-card modal-content" style={{maxWidth:'600px', width:'95%', maxHeight:'90vh', overflowY:'auto'}}>
+                
+                {/* Modal Header */}
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem'}}>
+                    <h2 style={{margin:0}}>Create New Event</h2>
+                    <button onClick={() => setShowModal(false)} className="btn-icon" style={{fontSize:'1.5rem'}}>✕</button>
+                </div>
+                
+                {/* The Existing Form Logic */}
+                <form onSubmit={handleCreate} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                    
+                    {/* ROW 1: Basic Info */}
+                    <div style={{ gridColumn: 'span 2' }}>
+                        <label style={{fontSize:'0.8rem', color:'#888'}}>Event Name</label>
+                        <input 
+                            placeholder="e.g. Hackathon 2025" 
+                            value={form.name} 
+                            onChange={e => setForm({...form, name: e.target.value})} 
+                            required 
+                            style={{width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #444', background: 'rgba(0,0,0,0.3)', color: 'white'}}
+                        />
+                    </div>
+                    <div>
+                        <label style={{fontSize:'0.8rem', color:'#888'}}>Type</label>
+                        <select 
+                            value={form.type} 
+                            onChange={e => setForm({...form, type: e.target.value})}
+                            style={{width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #444', background: 'rgba(0,0,0,0.3)', color: 'white'}}
+                        >
+                            <option value="SOLO">SOLO</option>
+                            <option value="GROUP">GROUP</option>
+                        </select>
+                    </div>
+                    <div>
+                            <label style={{fontSize:'0.8rem', color:'#888'}}>Entry Fee (₹)</label>
+                            <input 
+                            type="number" 
+                            value={form.fee} 
+                            onChange={e => setForm({...form, fee: e.target.value})} 
+                            style={{width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #444', background: 'rgba(0,0,0,0.3)', color: 'white'}}
+                            />
+                    </div>
+
+                    {/* ROW 2: Scheduling */}
+                    <div>
+                        <label style={{fontSize:'0.8rem', color:'#888'}}>Date</label>
+                        <input 
+                            type="date" 
+                            value={form.date} 
+                            onChange={e => setForm({...form, date: e.target.value})} 
+                            style={{width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #444', background: 'rgba(0,0,0,0.3)', color: 'white'}}
+                        />
+                    </div>
+                    <div>
+                        <label style={{fontSize:'0.8rem', color:'#888'}}>Start Time</label>
+                        <input 
+                            type="time" 
+                            value={form.start_time} 
+                            onChange={e => setForm({...form, start_time: e.target.value})} 
+                            style={{width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #444', background: 'rgba(0,0,0,0.3)', color: 'white'}}
+                        />
+                    </div>
+                    <div>
+                        <label style={{fontSize:'0.8rem', color:'#888'}}>End Time</label>
+                        <input 
+                            type="time" 
+                            value={form.end_time} 
+                            onChange={e => setForm({...form, end_time: e.target.value})} 
+                            style={{width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #444', background: 'rgba(0,0,0,0.3)', color: 'white'}}
+                        />
+                    </div>
+                    
+                    {/* ROW 3: Limits */}
+                    <div>
+                        <label style={{fontSize:'0.8rem', color:'#888'}}>Min Team Size</label>
+                        <input 
+                            type="number" 
+                            value={form.min_team_size} 
+                            onChange={e => setForm({...form, min_team_size: e.target.value})} 
+                            disabled={form.type === 'SOLO'}
+                            style={{width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #444', background: 'rgba(0,0,0,0.3)', color: 'white', opacity: form.type === 'SOLO' ? 0.5 : 1}}
+                        />
+                    </div>
+                    <div>
+                        <label style={{fontSize:'0.8rem', color:'#888'}}>Max Team Size</label>
+                        <input 
+                            type="number" 
+                            value={form.max_team_size} 
+                            onChange={e => setForm({...form, max_team_size: e.target.value})} 
+                            disabled={form.type === 'SOLO'}
+                            style={{width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #444', background: 'rgba(0,0,0,0.3)', color: 'white', opacity: form.type === 'SOLO' ? 0.5 : 1}}
+                        />
+                    </div>
+
+                    {/* ROW 4: Description (Full Width) */}
+                    <div style={{ gridColumn: '1 / -1' }}>
+                        <label style={{fontSize:'0.8rem', color:'#888'}}>Description / Rules</label>
+                        <textarea 
+                            placeholder="Enter event details, rules, and regulations here..." 
+                            value={form.description} 
+                            onChange={e => setForm({...form, description: e.target.value})} 
+                            rows="3"
+                            style={{width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #444', background: 'rgba(0,0,0,0.3)', color: 'white', resize: 'vertical'}}
+                        />
+                    </div>
+
+                    {/* Footer Actions */}
+                    <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop:'1rem' }}>
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+                        <button className="btn" style={{padding: '10px 30px'}}>Create Event</button>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+      )}
       
+      {/* EVENTS LIST (Unchanged) */}
       <div className="grid-cards">
         {events.map(e => (
           <div key={e.id} style={{ background: 'rgba(255,255,255,0.05)', padding: '1.5rem', borderRadius: '12px' }}>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
                 <div>
                     <h3 style={{margin:0}}>{e.name}</h3>
-                    <div style={{fontSize:'0.85rem', color:'var(--text-muted)', marginBottom:'1rem'}}>
+                    <div style={{fontSize:'0.85rem', color:'var(--text-muted)', marginBottom:'0.5rem'}}>
                         {e.type} • ₹{e.fee} 
                         {e.type === 'GROUP' && <span style={{color:'var(--accent)', marginLeft:'5px'}}> (Size: {e.min_team_size}-{e.max_team_size})</span>}
                     </div>
+                    {(e.date || e.start_time) && (
+                        <div style={{fontSize:'0.8rem', color:'#aaa', marginBottom:'1rem', display:'flex', gap:'10px', alignItems:'center'}}>
+                            {e.date && <span>📅 {e.date}</span>}
+                            {e.start_time && <span>⏰ {e.start_time.substring(0,5)} {e.end_time ? `- ${e.end_time.substring(0,5)}` : ''}</span>}
+                        </div>
+                    )}
                 </div>
                 <button 
                     onClick={() => handleDelete(e.id)} 
@@ -256,7 +421,7 @@ const EventsManager = () => {
                     Delete
                 </button>
             </div>
-            {/* STATS COUNTERS */}
+            
             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(80px, 1fr))', gap:'0.5rem'}}>
                 <div style={{background:'rgba(0,0,0,0.3)', padding:'0.5rem', borderRadius:'8px', textAlign:'center'}}>
                     <div style={{fontSize:'1.2rem', fontWeight:'bold'}}>{e.total_registrations}</div>
@@ -277,7 +442,6 @@ const EventsManager = () => {
     </div>
   );
 };
-
 // 2. GUARD PANEL
 const GuardPanel = ({ forcedEvent = null }) => {
   const [events, setEvents] = useState([]);
