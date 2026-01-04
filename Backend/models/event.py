@@ -2,6 +2,7 @@ from typing import Optional
 from sqlmodel import SQLModel, Field
 from .enums import EventType
 from .enums import PaymentStatus as RegPaymentStatus
+import datetime
 
 class Event(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -10,6 +11,10 @@ class Event(SQLModel, table=True):
     fee: float
     max_team_size: int
     min_team_size: int = Field(default=2)
+    description: Optional[str] = Field(default=None) 
+    date: Optional[datetime.date] = Field(default=None)       
+    start_time: Optional[datetime.time] = Field(default=None) 
+    end_time: Optional[datetime.time] = Field(default=None)   
 
 class Team(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

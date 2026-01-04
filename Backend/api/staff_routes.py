@@ -1,16 +1,19 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query,Request
 from fastapi.responses import StreamingResponse
-from sqlmodel import Session
+from sqlmodel import Session, select
 from database import get_session
 from services import staff_service, export_service , payment_service
 from schemas.staff_schemas import * 
 from utils.cashToken import generate_cash_token_logic
+from models import User, Volunteer, Event, Registration, Team
+from utils.limiter import limiter
 
 
 router = APIRouter()
 
 @router.post("/staff/walk-in-register", tags=["Staff"])
-def walk_in_register(req: WalkInBulkRequest, session: Session = Depends(get_session)):
+@limiter.limit("10/minute")
+def walk_in_register(request: Request, req: WalkInBulkRequest, session: Session = Depends(get_session)):
     result = staff_service.walk_in_bulk_registration_logic(req, session)
     return {"status": "success", "data": result}
 
@@ -54,6 +57,10 @@ def export_event_data(
         headers={"Content-Disposition": f"attachment; filename=event_{event_id}_{sort}.csv"}
     )
 
+@router.get("/admin/users", tags=["Admin"])
+def list_users(session: Session = Depends(get_session)):
+    return session.exec(select(User)).all()
+
 @router.get("/admin/export/master")
 def export_master_data(session: Session = Depends(get_session)):
     """
@@ -67,3 +74,31 @@ def export_master_data(session: Session = Depends(get_session)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=master_export.csv"}
     )
+
+
+@router.get("/staff/all-registrations", tags=["Staff"])
+def get_all_registrations(session: Session = Depends(get_session)):
+    # We join 4 tables to get the complete picture
+    statement = (
+        select(Registration, User, Team, Event)
+        .join(User, Registration.user_id == User.id)
+        .join(Event, Registration.event_id == Event.id)
+        .outerjoin(Team, Registration.team_id == Team.id) # Outer join because some people are Solo (no team)
+        .where(Registration.payment_status == "PAID")    # Only show valid tickets
+    )
+    
+    results = session.exec(statement).all()
+    
+    # Format the data for the Frontend
+    data = []
+    for reg, user, team, event in results:
+        data.append({
+            "reg_id": reg.id,
+            "user_uid": user.uid,
+            "user_name": user.name,
+            "event_id": event.id,          # Needed for filtering
+            "team_name": team.name if team else "Individual", # Needed for Grouping
+            "attended": reg.attended
+        })
+        
+    return data

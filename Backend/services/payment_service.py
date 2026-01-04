@@ -23,13 +23,16 @@ logger = logging.getLogger("PaymentService")
 load_dotenv()
 
 # CONFIGURATION
-CASHFREE_APP_ID = os.getenv("CASHFREE_APP_ID")
-CASHFREE_SECRET_KEY = os.getenv("CASHFREE_SECRET_KEY")
+
 CASHFREE_ENV = os.getenv("CASHFREE_ENV", "SANDBOX") # SANDBOX or PRODUCTION
 
 if CASHFREE_ENV == "PRODUCTION":
+    CASHFREE_APP_ID = os.getenv("CASHFREE_APP_ID_PROD")
+    CASHFREE_SECRET_KEY = os.getenv("CASHFREE_SECRET_KEY_PROD")
     BASE_URL = "https://api.cashfree.com/pg"
 else:
+    CASHFREE_APP_ID = os.getenv("CASHFREE_APP_ID_TEST")
+    CASHFREE_SECRET_KEY = os.getenv("CASHFREE_SECRET_KEY_TEST")
     BASE_URL = "https://sandbox.cashfree.com/pg"
 
 HEADERS = {

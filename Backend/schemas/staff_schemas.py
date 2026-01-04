@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from models.enums import VolunteerRole
 
 class VolunteerCreate(BaseModel):
@@ -22,8 +22,11 @@ class AdminLoginRequest(BaseModel):
 
 class AdminLoginResponse(BaseModel):
     success: bool
-    role: str
     message: str
+    role: str
+    access_token: str       # <--- Matches your route return
+    token_type: str         # <--- Matches your route return
+    user: Dict[str, Any]
 
 class TokenRequest(BaseModel):
     amount: float

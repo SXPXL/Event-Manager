@@ -9,6 +9,7 @@ from services import event_service, payment_service
 from utils.cashToken import verify_cash_token_logic
 from dotenv import load_dotenv
 import os
+from api.dependencies import require_admin
 
 load_dotenv()
 
@@ -56,6 +57,10 @@ def get_events(session: Session = Depends(get_session)):
             fee=event.fee,
             max_team_size=event.max_team_size,
             min_team_size=event.min_team_size,
+            description=event.description,
+            date=event.date,
+            start_time=event.start_time,
+            end_time=event.end_time,
             total_registrations=reg_count,
             total_attended=att_count,
             revenue=revenue

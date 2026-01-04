@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Literal
 from models.enums import EventType
+import datetime
 
 # --- Display Schemas ---
 class EventDisplay(BaseModel):
@@ -16,6 +17,10 @@ class EventDisplay(BaseModel):
     payment_status: Optional[str] = "PENDING"
     team_name: Optional[str] = None
     is_leader: bool = False
+    description: Optional[str] = None
+    date: Optional[datetime.date] = None
+    start_time: Optional[datetime.time] = None
+    end_time: Optional[datetime.time] = None
 
 # ... [Keep the rest of the file exactly as it was] ...
 class CheckUIDResponse(BaseModel):
@@ -45,6 +50,10 @@ class EventCreate(BaseModel):
     fee: float
     max_team_size: int
     min_team_size: int = 2
+    description: Optional[str] = None
+    date: Optional[datetime.date] = None
+    start_time: Optional[datetime.time] = None
+    end_time: Optional[datetime.time] = None
 
 class BulkItem(BaseModel):
     event_id: int

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks,Request
 from sqlmodel import Session, select
 from database import get_session
 from schemas.user_schemas import UserCreateUpdate, UserResponse, UserDetails, UserUpdateProfile
@@ -6,13 +6,18 @@ from schemas.event_schemas import EventDisplay, CheckUIDResponse
 from schemas.staff_schemas import AdminLoginRequest, AdminLoginResponse
 from services import auth_service
 from models import Registration, Event, User, Team
-from utils.email import send_email_background # <--- Import this
+from utils.email import send_email_background 
+from utils.security import verify_password, create_access_token
+from models import Volunteer
+from utils.limiter import limiter
+
 
 router = APIRouter()
 
 # ... (check_uid remains unchanged) ...
 @router.get("/check-uid/{uid}", response_model=CheckUIDResponse)
-def check_uid(uid: str, session: Session = Depends(get_session)):
+@limiter.limit("30/minute")
+def check_uid(request: Request, uid: str, session: Session = Depends(get_session)):
     # 1. Fetch User DIRECTLY (Bypassing service to ensure we find them)
     user = session.exec(select(User).where(User.uid == uid)).first()
     
@@ -62,7 +67,9 @@ def check_uid(uid: str, session: Session = Depends(get_session)):
 
 # --- UPDATED REGISTER ROUTE WITH EMAIL ---
 @router.post("/users", response_model=UserResponse)
+@limiter.limit("10/minute")
 def register_user(
+    request: Request,
     user_data: UserCreateUpdate, 
     background_tasks: BackgroundTasks,  # <--- INJECT THIS
     session: Session = Depends(get_session)
@@ -74,12 +81,38 @@ def register_user(
     
     return UserResponse(uid=user.uid, name=user.name, email=user.email, is_shadow=user.is_shadow, message=msg)
 
-
-# ... (Rest of file unchanged) ...
 @router.post("/admin/login", response_model=AdminLoginResponse, tags=["Admin"])
-def admin_login(creds: AdminLoginRequest, session: Session = Depends(get_session)):
-    volunteer = auth_service.admin_login_logic(creds, session)
-    return AdminLoginResponse(success=True, role=volunteer.role, message=f"Welcome {volunteer.username}!")
+@limiter.limit("5/minute")
+def admin_login_logic(
+    request: Request,
+    creds: AdminLoginRequest,
+    session: Session = Depends(get_session)
+):
+    volunteer = session.exec(
+        select(Volunteer).where(Volunteer.username == creds.username)
+    ).first()
+
+    if not volunteer or not verify_password(creds.password, volunteer.password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    access_token = create_access_token(
+        data={"sub": volunteer.username, "role": volunteer.role, "id": volunteer.id}
+    )
+
+    return {
+        "success": True,
+        "message": "Admin login successful",
+        "role": volunteer.role,
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": volunteer.id,
+            "username": volunteer.username,
+            "role": volunteer.role,
+            "assigned_event_id": volunteer.assigned_event_id
+        }
+    }
+
 
 @router.put("/users/{uid}", response_model=UserResponse)
 def update_user_profile(uid: str, req: UserUpdateProfile, session: Session = Depends(get_session)):

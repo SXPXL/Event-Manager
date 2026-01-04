@@ -6,10 +6,30 @@ from sqlmodel import Session, select
 from models import Volunteer, VolunteerRole
 import os
 from dotenv import load_dotenv
+from sqlmodel import select, Session
+from utils.security import get_password_hash as hash_password
+from database import engine
+from slowapi import _rate_limit_exceeded_handler 
+from slowapi.errors import RateLimitExceeded     
+from utils.limiter import limiter
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_db_and_tables()
+    yield
 
 load_dotenv()
+ad_user=os.getenv("ADMIN_USERNAME")
+ad_pass=os.getenv("ADMIN_PASSWORD")
 
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
+
+# 1. ATTACH LIMITER STATE TO APP
+app.state.limiter = limiter
+
+# 2. ADD EXCEPTION HANDLER (So users get a nice error message)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- CORS ---
 origins_str = os.getenv("FRONTEND_URL", "")
@@ -25,16 +45,19 @@ app.add_middleware(
 # --- STARTUP ---
 @app.on_event("startup")
 def on_startup():
-    create_db_and_tables()
-    # Seed admin if not exists
-    session = next(get_session())
-    if not session.get(Volunteer, 1):  # Check if admin with id=1 exists
-        admin_username = os.getenv("ADMIN_USERNAME")
-        admin_password = os.getenv("ADMIN_PASSWORD")
-        session.add(Volunteer(username=admin_username, password=admin_password, role=VolunteerRole.ADMIN))
-        print("Admin user created.")
-        session.commit()
-    session.close()
+    with Session(engine) as session:
+        admin = session.exec(
+            select(Volunteer).where(Volunteer.username == ad_user)
+        ).first()
+
+        if not admin:
+            admin = Volunteer(
+                username=ad_user,
+                password=hash_password(ad_pass),
+                role="ADMIN"
+            )
+            session.add(admin)
+            session.commit()
 
 # --- ROUTERS ---
 app.include_router(auth_routes.router)
