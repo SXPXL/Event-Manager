@@ -12,3 +12,4 @@ passlib[bcrypt]==1.7.4
 alembic==1.13.0
 email-validator
 slowapi
+python-jose[cryptography]
