@@ -153,7 +153,7 @@ const Dashboard = () => {
           const { payment_session_id, order_id } = res.data.payment_data;
           if (!payment_session_id) { alert("Error: No session."); return; }
 
-          const cashfree = await load({ mode: "sandbox" });
+          const cashfree = await load({ mode: import.meta.env.VITE_CASHFREE_MODE });
           cashfree.checkout({
               paymentSessionId: payment_session_id,
               redirectTarget: "_self",
