@@ -10,7 +10,7 @@ const PaymentButton = ({ sessionData, onPaymentStart }) => {
         if (onPaymentStart) onPaymentStart();
 
         try {
-            const cashfree = await load({ mode: "sandbox" }); 
+            const cashfree = await load({ mode: import.meta.env.VITE_CASHFREE_MODE });
             cashfree.checkout({
                 paymentSessionId: sessionData.payment_session_id,
                 redirectTarget: "_self", 
