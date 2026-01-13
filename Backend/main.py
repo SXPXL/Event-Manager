@@ -63,6 +63,7 @@ def on_startup():
 def health_check():
     return {"status": "ok", "message": "Enik Jeevan ind"}
 
+@app.head("/health")
 @app.get("/")
 def read_root():
     return {"Machan": "ON aaneeee"}           
