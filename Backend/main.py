@@ -58,7 +58,7 @@ def on_startup():
             )
             session.add(admin)
             session.commit()
-
+@app.head("/health")
 @app.get("/health")
 def health_check():
     return {"status": "ok", "message": "Enik Jeevan ind"}
