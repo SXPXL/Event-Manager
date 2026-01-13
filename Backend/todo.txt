@@ -50,27 +50,21 @@ Small changes
 
 - user profile editing - done
 
-- remove qr from user dashboard.(do it after mail integration)
+- remove qr from user dashboard.(do it after mail integration) - done
 
 - proper delete button for event user (only in admin dashboard) type confirm to delete. - cancelled
 
-- create proper admin creation on startup by taking values from env -
+- create proper admin creation on startup by taking values from env - done
 
 - reduce uid and cash token length - done
 
 - delete user and staff - done
 
-- check if the entered number is a valid phone number.
-
-- notification icon, mainly for showing payment status updates and stuff.
-
-- start,end time and date for events.
+- notification icon, mainly for showing payment status updates and stuff. - cancelled
 
 - Instruction page with agree button. - say about not choosing events that could result in clashes like one event is scheduled for 10 to 11 other one is for 10:30 to 12.
 
 - cancel registration. (not preffered but still)
-
-- email verification by the system, keeps the user waiting until the email is sent, if it's succesfull registration will be complete else the registration to the system wont be saved. - 
 
 - after the payment status page when we click back it goes to the dashboard but after a few seconds it redirects to the landing page - fixed
 
@@ -92,7 +86,7 @@ conclusion - code checks if it goes to the pg and doesnt read the result - fixed
 
 - cash token placeholder + input to all capital automatically - done
 
-- toggle for qr scan and manual input(without that there will be lag)
+- toggle for qr scan and manual input(without that there will be lag) - later
 
 
 
@@ -107,4 +101,87 @@ PRODUCTION CHECKS
     cors origin setup from env
     
 
-ADD Loader everwhere
+
+- check if the entered number is a valid phone number.
+
+- start,end time and date for events.
+
+
+
+📋 Phase 1: Data Structure & Visuals (The "Stack" Logic)
+Goal: Enable detailed event info, the "Agree to Terms" modal, and the Skeleton Loader.
+
+Step 1: Database Upgrade (Backend)
+
+Modify Backend/models/event.py: Add columns for description (Text), date (Date), start_time (Time), end_time (Time).
+
+Update Schemas (Backend/schemas/event_schemas.py): Update EventCreate and EventDisplay to include these new fields.
+
+Apply Changes: Delete eventflow.db and restart backend (fastest way in dev) or run Alembic migration.
+
+Step 2: Admin Event Management (Frontend)
+
+Update EventsManager in AdminDashboard.jsx: Add input fields for Date, Time, and Description so you can actually populate this data for testing.
+
+Step 3: User Experience Upgrade (Frontend)
+
+Create EventInfoModal.jsx: A new component that pops up when a user clicks an event. It shows the description and has the "I Agree" checkbox.
+
+Update Dashboard.jsx:
+
+Replace the simple addToStack click with logic to open EventInfoModal.
+
+Skeleton Implementation: Create a SkeletonCard component (gray bars). In Dashboard.jsx, while loading is true, render 6 SkeletonCards instead of the Spinner.
+
+🔐 Phase 2: Security Hardening (Authentication)
+Goal: Ensure only authorized staff can access the Admin Panel using JWT (JSON Web Tokens).
+
+Step 4: Backend Security
+
+Install Dependencies: pip install pyjwt passlib bcrypt.
+
+Password Hashing: Update staff_service.py to hash passwords when creating volunteers.
+
+Login Logic: Update /admin/login to return a JWT Token instead of just "Success".
+
+Route Protection: Create a dependency get_current_staff. Add this to all /admin and /staff routes (e.g., delete_user, get_reports).
+
+Step 5: Frontend Security
+
+Update api.js: Configure axios to look for a token in localStorage and attach it to every request header (Authorization: Bearer ...).
+
+Update AdminLogin.jsx: Save the received token to localStorage upon login.
+
+Update AdminDashboard.jsx: Check for the token on load; if missing, redirect to Login.
+
+🛠️ Phase 3: Operational Tools (The Event Day Lifeline)
+Goal: Build the tools needed for the actual event day.
+
+Step 6: Walk-in Registration
+
+Build StaffWalkIn.jsx:
+
+Create a form to search for an existing user (by email) or create a new one.
+
+Add an "Add Event" dropdown (similar to the user dashboard stack).
+
+Add a "Collect Cash" button that hits the /register-bulk endpoint with a specific flag (e.g., payment_mode='WALK_IN').
+
+Step 7: Reports & Data
+
+Build ReportsPanel.jsx:
+
+Fetch all registrations.
+
+Calculate Stats (Total Cash collected vs. Online).
+
+Add a "Download CSV" button (Frontend logic to convert JSON to CSV).
+
+🛡️ Phase 4: Infrastructure Protection
+Goal: Prevent abuse.
+
+Step 8: Rate Limiting & Sanitation
+
+Install: pip install slowapi.
+
+Apply Limits: Add @limiter.limit("5/minute") to the Login route and @limiter.limit("20/minute") to Registration routes.

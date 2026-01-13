@@ -59,6 +59,14 @@ def on_startup():
             session.add(admin)
             session.commit()
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "message": "Enik Jeevan ind"}
+
+@app.get("/")
+def read_root():
+    return {"Machan": "ON aaneeee"}           
+
 # --- ROUTERS ---
 app.include_router(auth_routes.router)
 app.include_router(event_routes.router)

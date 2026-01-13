@@ -254,6 +254,8 @@ const EventsManager = () => {
     }
   };
 
+  
+
   return (
     <div>
       {/* HEADER */}
@@ -398,7 +400,11 @@ const EventsManager = () => {
           <div key={e.id} style={{ background: 'rgba(255,255,255,0.05)', padding: '1.5rem', borderRadius: '12px' }}>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
                 <div>
-                    <h3 style={{margin:0}}>{e.name}</h3>
+                    <h3 style={{margin:0}}>
+                        {e.name}
+                        {/* 2. OPTIONAL: Add a badge so you know it's hidden */}
+                        {e.is_hidden && <span className="badge badge-neutral" style={{marginLeft:'10px', fontSize:'0.7rem'}}>HIDDEN</span>}
+                    </h3>
                     <div style={{fontSize:'0.85rem', color:'var(--text-muted)', marginBottom:'0.5rem'}}>
                         {e.type} • ₹{e.fee} 
                         {e.type === 'GROUP' && <span style={{color:'var(--accent)', marginLeft:'5px'}}> (Size: {e.min_team_size}-{e.max_team_size})</span>}
@@ -410,16 +416,23 @@ const EventsManager = () => {
                         </div>
                     )}
                 </div>
-                <button 
-                    onClick={() => handleDelete(e.id)} 
-                    className="btn btn-secondary" 
-                    style={{
-                        color: 'var(--danger)', borderColor: 'var(--danger)', 
-                        background: 'rgba(239, 68, 68, 0.05)', padding: '4px 12px', fontSize: '0.75rem', fontWeight: 'bold', maxWidth: '80px'
-                    }}
-                >
-                    Delete
-                </button>
+
+                {/* 3. BUTTONS WRAPPER: Wrap buttons here to keep them side-by-side */}
+                <div style={{display:'flex', gap:'8px'}}>
+                    
+
+                    {/* EXISTING DELETE BUTTON */}
+                    <button 
+                        onClick={() => handleDelete(e.id)} 
+                        className="btn btn-secondary" 
+                        style={{
+                            color: 'var(--danger)', borderColor: 'var(--danger)', 
+                            background: 'rgba(239, 68, 68, 0.05)', padding: '4px 12px', fontSize: '0.75rem', fontWeight: 'bold'
+                        }}
+                    >
+                        Delete
+                    </button>
+                </div>
             </div>
             
             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(80px, 1fr))', gap:'0.5rem'}}>
