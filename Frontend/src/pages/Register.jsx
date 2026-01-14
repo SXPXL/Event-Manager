@@ -10,11 +10,36 @@ const Register = () => {
 
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', college: '' });
 
-  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  // ✅ UPDATED: Handle Change with Phone Validation
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+
+    if (name === 'phone') {
+      // 1. Remove any non-number character (Prevent letters/symbols)
+      const numericValue = value.replace(/\D/g, '');
+
+      // 2. Limit to 10 digits (Standard mobile number length)
+      if (numericValue.length <= 10) {
+        setFormData({ ...formData, [name]: numericValue });
+      }
+    } else {
+      // Default behavior for other fields
+      setFormData({ ...formData, [name]: value });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true); setError(null);
+    setLoading(true); 
+    setError(null);
+
+    // ✅ UPDATED: Validate Phone Length before submitting
+    if (formData.phone.length !== 10) {
+      setError("Please enter a valid 10-digit phone number.");
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await API.post('/users', formData);
       setUserEmail(res.data.email);
@@ -66,7 +91,17 @@ const Register = () => {
 
           <div className="form-group">
             <label>Phone Number</label>
-            <input name="phone" type="tel" required placeholder="+91 9876543210" value={formData.phone} onChange={handleChange} />
+            <input 
+              name="phone" 
+              type="tel" 
+              required 
+              placeholder="9876543210" 
+              value={formData.phone} 
+              onChange={handleChange} 
+              // Optional: HTML5 pattern for extra browser-native validation
+              pattern="[0-9]{10}"
+              title="Please enter exactly 10 digits"
+            />
           </div>
 
           <div className="form-group">

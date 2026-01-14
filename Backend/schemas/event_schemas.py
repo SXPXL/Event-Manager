@@ -17,6 +17,7 @@ class EventDisplay(BaseModel):
     payment_status: Optional[str] = "PENDING"
     team_name: Optional[str] = None
     is_leader: bool = False
+    attended: bool = False
     description: Optional[str] = None
     date: Optional[datetime.date] = None
     start_time: Optional[datetime.time] = None

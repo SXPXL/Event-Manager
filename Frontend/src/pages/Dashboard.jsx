@@ -206,30 +206,64 @@ const Dashboard = () => {
 
       {/* EDIT PROFILE MODAL */}
       {isEditOpen && (
-        <div className="modal-overlay">
-            <div className="glass-card modal-content">
-                <h2 style={{ marginBottom: '1.5rem' }}>Edit Profile</h2>
-                <form onSubmit={handleUpdateProfile}>
-                    <div style={{marginBottom:'1rem'}}>
-                        <label style={{display:'block', marginBottom:'5px', color:'var(--text-muted)'}}>Full Name</label>
-                        <input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} required />
-                    </div>
-                    <div style={{marginBottom:'1rem'}}>
-                        <label style={{display:'block', marginBottom:'5px', color:'var(--text-muted)'}}>Phone</label>
-                        <input value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} required />
-                    </div>
-                    <div style={{marginBottom:'1rem'}}>
-                        <label style={{display:'block', marginBottom:'5px', color:'var(--text-muted)'}}>College</label>
-                        <input value={editForm.college} onChange={e => setEditForm({...editForm, college: e.target.value})} required />
-                    </div>
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-                        <button type="button" className="btn btn-secondary" onClick={() => setIsEditOpen(false)}>Cancel</button>
-                        <button type="submit" className="btn">Save Changes</button>
-                    </div>
-                </form>
+<div className="modal-overlay">
+    <div className="glass-card modal-content">
+        <h2 style={{ marginBottom: '1.5rem' }}>Edit Profile</h2>
+        
+        <form onSubmit={(e) => {
+            e.preventDefault();
+            // ✅ VALIDATION: Check for exactly 10 digits
+            if (editForm.phone.length !== 10) {
+                alert("Please enter a valid 10-digit phone number.");
+                return;
+            }
+            handleUpdateProfile(e);
+        }}>
+            
+            <div style={{marginBottom:'1rem'}}>
+                <label style={{display:'block', marginBottom:'5px', color:'var(--text-muted)'}}>Full Name</label>
+                <input 
+                    value={editForm.name} 
+                    onChange={e => setEditForm({...editForm, name: e.target.value})} 
+                    required 
+                />
             </div>
-        </div>
-      )}
+
+            <div style={{marginBottom:'1rem'}}>
+                <label style={{display:'block', marginBottom:'5px', color:'var(--text-muted)'}}>Phone</label>
+                {/* ✅ UPDATED INPUT LOGIC */}
+                <input 
+                    type="tel"
+                    value={editForm.phone} 
+                    onChange={e => {
+                        // 1. Remove non-numbers
+                        const val = e.target.value.replace(/\D/g, '');
+                        // 2. Limit to 10 digits
+                        if (val.length <= 10) {
+                            setEditForm({...editForm, phone: val});
+                        }
+                    }} 
+                    placeholder="9876543210"
+                    required 
+                />
+            </div>
+
+            <div style={{marginBottom:'1rem'}}>
+                <label style={{display:'block', marginBottom:'5px', color:'var(--text-muted)'}}>College</label>
+                <input 
+                    value={editForm.college} 
+                    onChange={e => setEditForm({...editForm, college: e.target.value})} 
+                    required 
+                />
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setIsEditOpen(false)}>Cancel</button>
+                <button type="submit" className="btn">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>)}
 
       {/* 2. REGISTERED EVENTS */}
       <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-muted)' }}>REGISTERED EVENTS</h3>

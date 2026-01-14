@@ -45,6 +45,7 @@ def check_uid(request: Request, uid: str, session: Session = Depends(get_session
             "max_team_size": event.max_team_size,
             "min_team_size": event.min_team_size,
             "payment_status": reg.payment_status,
+            "attended": reg.attended,
             "team_name": team.name if team else None,
             "is_leader": (team.leader_id == user.id) if team else False
         })
@@ -59,6 +60,7 @@ def check_uid(request: Request, uid: str, session: Session = Depends(get_session
             phone=user.phone, 
             college=user.college, 
             is_shadow=user.is_shadow
+            
         ),
         registered_events=event_list,
         message="User found.",

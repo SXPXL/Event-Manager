@@ -5,6 +5,7 @@ from models import Registration, User, PaymentStatus, Team, Event, CashToken, Vo
 from schemas import WalkInBulkRequest
 from utils.cashToken import generate_cash_token_logic
 from models import EventType
+from models.payment import PaymentOrder
 
 def mark_attendance_logic(user_uid: str, event_id: int, session: Session):
     statement = select(Registration).join(User).where(User.uid == user_uid).where(Registration.event_id == event_id)
@@ -283,13 +284,13 @@ def delete_volunteer_logic(vol_id: int, session: Session):
     session.delete(vol)
     session.commit()
     return f"Staff member '{vol.username}' deleted."
-
 def delete_user_logic(uid: str, session: Session):
     """
     Deletes a user and cascades the deletion to their data:
-    1. Deletes their Registrations (removes from events).
-    2. Deletes any Teams where they are the LEADER.
-    3. Deletes the User record.
+    1. Deletes their Registrations.
+    2. Deletes Teams they lead.
+    3. Deletes Payment Orders (CRITICAL FIX).
+    4. Deletes the User record.
     """
     # 1. Find User
     user = session.exec(select(User).where(User.uid == uid)).first()
@@ -306,7 +307,15 @@ def delete_user_logic(uid: str, session: Session):
     for team in teams_leading:
         session.delete(team)
 
-    # 4. Delete User
+    # ---------------------------------------------------------
+    # ✅ NEW STEP: DELETE PAYMENT ORDERS
+    # ---------------------------------------------------------
+    payment_orders = session.exec(select(PaymentOrder).where(PaymentOrder.user_id == user.id)).all()
+    for order in payment_orders:
+        session.delete(order)
+    # ---------------------------------------------------------
+
+    # 5. Delete User
     session.delete(user)
     session.commit()
     

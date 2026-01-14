@@ -124,9 +124,9 @@ def register_bulk(
         
     elif req.payment_mode == 'CASH':
         # (Keep existing Cash Logic)
-        verify_cash_token_logic(req.cash_token, total_fee, session)
+        verify_cash_token_logic(req.cash_token, total_fee, leader.id, event_ids, session)
         status_to_save = PaymentStatus.PAID
-        final_order_id = f"CASH_{req.cash_token}"
+        final_order_id = req.cash_token
 
     # 4. Register in DB (as PENDING)
     msg = event_service.register_bulk_logic(req, session, background_tasks, status_to_save,order_id=final_order_id)

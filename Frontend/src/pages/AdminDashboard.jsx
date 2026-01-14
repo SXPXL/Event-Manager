@@ -456,15 +456,14 @@ const EventsManager = () => {
   );
 };
 // 2. GUARD PANEL
+// 2. GUARD PANEL
 const GuardPanel = ({ forcedEvent = null }) => {
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(forcedEvent ? forcedEvent.id : null);
   const [uidInput, setUidInput] = useState('');
   const [scanResult, setScanResult] = useState(null); 
   const [scanning, setScanning] = useState(true);
-  
-  // --- NEW: UI Message State (Replaces Alerts) ---
-  const [uiMessage, setUiMessage] = useState(null); // { type: 'success' | 'error', text: '' }
+  const [uiMessage, setUiMessage] = useState(null); 
 
   useEffect(() => { 
       if (forcedEvent) {
@@ -475,18 +474,17 @@ const GuardPanel = ({ forcedEvent = null }) => {
       }
   }, [forcedEvent]);
 
-  // Helper to show temporary success messages
   const showTemporaryMessage = (type, text) => {
       setUiMessage({ type, text });
       if (type === 'success') {
-          setTimeout(() => setUiMessage(null), 3000); // Auto-hide success after 3s
+          setTimeout(() => setUiMessage(null), 3000); 
       }
   };
 
   const fetchUserForCheckIn = async (uid) => {
     if (!uid) return;
-    setUiMessage(null); // Clear previous errors
-    setScanning(false); // Hide camera to show "Processing"
+    setUiMessage(null); 
+    setScanning(false); 
 
     try {
         const res = await API.get(`/check-uid/${uid}`);
@@ -496,8 +494,7 @@ const GuardPanel = ({ forcedEvent = null }) => {
             throw new Error("User data empty");
         }
     } catch (err) { 
-        // ERROR HANDLING IN UI
-        setScanning(true); // Bring camera back immediately
+        setScanning(true); 
         setUidInput('');
         setUiMessage({ type: 'error', text: "❌ User Not Found / Invalid ID" });
     }
@@ -505,16 +502,18 @@ const GuardPanel = ({ forcedEvent = null }) => {
 
   const confirmCheckIn = async () => {
     if (!scanResult || !selectedEventId) return;
+    
+    // ✅ FIX 1: Grab name from local state so it never says "undefined"
+    const userName = scanResult.user.name;
+
     try {
-        const res = await API.post('/staff/mark-attendance', { user_uid: scanResult.user.uid, event_id: selectedEventId });
+        await API.post('/staff/mark-attendance', { user_uid: scanResult.user.uid, event_id: selectedEventId });
         
-        // SUCCESS HANDLING IN UI
-        showTemporaryMessage('success', `✅ ${res.data.user_name} Checked In!`);
+        showTemporaryMessage('success', `✅ ${userName} Checked In!`);
         
         setEvents(prev => prev.map(ev => ev.id === selectedEventId ? { ...ev, total_attended: ev.total_attended + 1 } : ev));
         resetScanner();
     } catch (err) { 
-        // ERROR HANDLING IN UI
         setUiMessage({ type: 'error', text: `❌ ${err.response?.data?.detail || "Check-in Failed"}` });
         resetScanner(); 
     }
@@ -529,24 +528,24 @@ const GuardPanel = ({ forcedEvent = null }) => {
   const handleScannerError = (err) => {
       console.error(err);
       setScanning(false);
-      setUiMessage({ type: 'error', text: "📷 Camera Permission Denied. Please allow camera access." });
+      setUiMessage({ type: 'error', text: "📷 Camera Permission Denied." });
   };
 
   const checkEligibility = () => {
       if (!scanResult || !selectedEventId) return { eligible: false, status: null };
       
       const currentEventName = events.find(e => e.id === selectedEventId)?.name;
-      const reg = scanResult.registered_events.find(ev => ev.name === currentEventName || ev.event_name === currentEventName); // Handle both naming conventions
+      const reg = scanResult.registered_events.find(ev => ev.name === currentEventName || ev.event_name === currentEventName); 
       
       // 1. Check if Registered
       if (!reg) return { eligible: false, status: 'NOT_REGISTERED' };
       
-      // 2. NEW CHECK: Is Payment Successful?
+      // 2. Check Payment
       if (reg.payment_status !== 'PAID') {
-          return { eligible: false, status: 'PAYMENT_PENDING' }; // or PAYMENT_FAILED
+          return { eligible: false, status: 'PAYMENT_PENDING' }; 
       }
 
-      // 3. Check if Already Entered
+      // 3. Check if Already Entered (Depends on Backend Fix!)
       if (reg.attended) return { eligible: false, status: 'ALREADY_CHECKED_IN' };
       
       return { eligible: true, status: 'ELIGIBLE', teamName: reg.team_name };
@@ -571,13 +570,12 @@ const GuardPanel = ({ forcedEvent = null }) => {
           <div style={{textAlign:'right', flex:1}}>
               <div style={{fontWeight:'bold', fontSize:'1.1rem'}}>{currentEvent?.name}</div>
               <div style={{fontSize:'0.9rem', color:'var(--text-muted)'}}>
-                  Reg: <span style={{color:'white'}}>{currentEvent?.total_registrations}</span> • 
                   Pres: <span style={{color:'var(--success)', fontWeight:'bold'}}>{currentEvent?.total_attended}</span>
               </div>
           </div>
       </div>
 
-      {/* --- NEW: UI MESSAGE BAR --- */}
+      {/* UI MESSAGE BAR */}
       {uiMessage && (
           <div style={{ 
               background: uiMessage.type === 'error' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(74, 222, 128, 0.2)', 
@@ -599,7 +597,7 @@ const GuardPanel = ({ forcedEvent = null }) => {
                         fetchUserForCheckIn(val); 
                     }
                 }} 
-                onError={handleScannerError} // <--- CATCH PERMISSION ERRORS
+                onError={handleScannerError} 
                 components={{ audio: false, finder: false }} 
                 constraints={{ facingMode: 'environment' }} 
                 styles={{ container: { width: '100%', height: '100%' } }} 
@@ -625,27 +623,44 @@ const GuardPanel = ({ forcedEvent = null }) => {
         </div>
       </div>
 
-      {/* RESULT MODAL */}
+      {/* RESULT MODAL (Fixed for Mobile) */}
       {scanResult && (
-        <div className="modal-overlay">
-            <div className="glass-card modal-content" style={{textAlign:'center', maxWidth: '500px', width: '90%'}}>
-                <h1 style={{fontSize:'2rem', margin:'0.5rem 0'}}>{scanResult.user.name}</h1>
-                <div className="badge badge-neutral" style={{fontSize:'1.2rem', marginBottom:'2rem'}}>{scanResult.user.uid}</div>
+        <div className="modal-overlay" style={{ alignItems: 'center', justifyContent: 'center', display: 'flex' }}>
+            <div className="glass-card modal-content" style={{textAlign:'center', maxWidth: '400px', width: '90%', maxHeight: '90vh', overflowY: 'auto', padding: '20px'}}>
                 
-                {status === 'NOT_REGISTERED' && <div style={{color:'#f87171', fontSize:'1.5rem', fontWeight:'bold'}}>⚠️ NOT REGISTERED</div>}
+                <h1 style={{fontSize:'1.8rem', margin:'0.5rem 0', wordWrap: 'break-word'}}>{scanResult.user.name}</h1>
+                <div className="badge badge-neutral" style={{fontSize:'1.2rem', marginBottom:'1.5rem'}}>{scanResult.user.uid}</div>
+                
+                {status === 'NOT_REGISTERED' && <div style={{color:'#f87171', fontSize:'1.4rem', fontWeight:'bold'}}>⚠️ NOT REGISTERED</div>}
+                
                 {status === 'PAYMENT_PENDING' && (
-                    <div style={{color:'#f87171', fontSize:'1.5rem', fontWeight:'bold'}}>
-                        ❌ PAYMENT FAILED/PENDING
-                        <div style={{fontSize:'1rem', color:'#ccc', marginTop:'5px'}}>Do not allow entry.</div>
+                    <div style={{color:'#f87171', fontSize:'1.4rem', fontWeight:'bold'}}>
+                        ❌ PAYMENT PENDING
+                        <div style={{fontSize:'0.9rem', color:'#ccc', marginTop:'5px'}}>Do not allow entry.</div>
                     </div>
                 )}
-                {status === 'ALREADY_CHECKED_IN' && <div style={{color:'#fbbf24', fontSize:'1.5rem', fontWeight:'bold'}}>⚠️ ALREADY CHECKED IN</div>}
-                {status === 'ELIGIBLE' && <div style={{color:'#34d399', fontWeight:'bold', fontSize:'1.5rem'}}>✅ ELIGIBLE <div style={{fontSize:'1rem', color:'white', marginTop:'5px'}}>{teamName}</div></div>}
                 
-                <div style={{display:'flex', gap:'1rem', marginTop:'2rem'}}>
-                    <button className="btn btn-secondary" onClick={resetScanner} style={{flex:1}}>{eligible ? 'Cancel' : 'Close'}</button>
-                    {eligible && <button className="btn" onClick={confirmCheckIn} style={{flex:1}}>CONFIRM ENTRY</button>}
+                {status === 'ALREADY_CHECKED_IN' && <div style={{color:'#fbbf24', fontSize:'1.4rem', fontWeight:'bold'}}>⚠️ ALREADY CHECKED IN</div>}
+                
+                {status === 'ELIGIBLE' && (
+                    <div style={{color:'#34d399', fontWeight:'bold', fontSize:'1.5rem'}}>
+                        ✅ ELIGIBLE 
+                        {teamName && <div style={{fontSize:'1rem', color:'white', marginTop:'5px', fontStyle: 'italic'}}>{teamName}</div>}
+                    </div>
+                )}
+                
+                {/* ✅ FIX 2: Responsive Buttons (Stack on mobile) */}
+                <div style={{display:'flex', gap:'10px', marginTop:'25px', flexDirection: 'column'}}> 
+                    {eligible && (
+                        <button className="btn" onClick={confirmCheckIn} style={{width:'100%', padding: '15px', fontSize: '1.1rem'}}>
+                            CONFIRM ENTRY
+                        </button>
+                    )}
+                    <button className="btn btn-secondary" onClick={resetScanner} style={{width:'100%', padding: '15px'}}>
+                        {eligible ? 'Cancel' : 'Close'}
+                    </button>
                 </div>
+
             </div>
         </div>
       )}
