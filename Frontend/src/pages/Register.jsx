@@ -56,7 +56,7 @@ const Register = () => {
       <div className="page-container">
         <div className="glass-card" style={{ maxWidth: '450px', textAlign: 'center', borderColor: 'var(--success)' }}>
           <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🎉</div>
-          <h2 style={{ color: 'var(--success)', marginBottom: '1rem' }}>Registration Successful</h2>
+          <h2 style={{ color: 'var(--success)', marginBottom: '1rem' }}>CHECK YOUR MAIL</h2>
           <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', lineHeight: '1.6' }}>
             We have sent your unique Access Code (UID) to <br/><strong style={{color: 'white'}}>{userEmail}</strong>
           </p>
