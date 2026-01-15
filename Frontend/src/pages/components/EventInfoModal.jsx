@@ -45,10 +45,14 @@ const EventInfoModal = ({ event, onClose, onConfirm }) => {
                 </div>
             )}
 
-            {/* DESCRIPTION */}
-            <h4 style={{ marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Description & Rules</h4>
+        
+            {/* DESCRIPTION WITH AUTO-LINKS */}
             <div style={{ whiteSpace: 'pre-line', lineHeight: '1.6', color: '#e0e0e0', fontSize: '0.95rem' }}>
-                {event.description || "No description provided for this event."}
+                {(event.description || "No description provided.").split(/(https?:\/\/[^\s]+)/g).map((part, i) => 
+                    part.match(/^https?:\/\//) ? 
+                    <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{color: '#60a5fa', textDecoration: 'underline'}}>{part}</a> : 
+                    part
+                )}
             </div>
         </div>
 
