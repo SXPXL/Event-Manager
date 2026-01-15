@@ -61,6 +61,37 @@ const Register = () => {
             We have sent your unique Access Code (UID) to <br/><strong style={{color: 'white'}}>{userEmail}</strong>
           </p>
           <Link to="/" className="btn">Back to Login</Link>
+
+          {/* --- NEW CONTACT SECTION --- */}
+          <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Didn't receive the email? Contact us via:
+            </p>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem' }}>
+              
+              {/* WhatsApp Link */}
+              <a href="https://wa.me/919497269128" target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem' }}>
+                <span style={{ fontSize: '1.5rem' }}>💬</span>
+                <span>WhatsApp</span>
+              </a>
+
+              {/* Phone Call Link */}
+              <a href="tel:+919847113128" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem' }}>
+                <span style={{ fontSize: '1.5rem' }}>📞</span>
+                <span>Call</span>
+              </a>
+
+              {/* Instagram Link */}
+              <a href="https://instagram.com/srishti__2.6" target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem' }}>
+                <span style={{ fontSize: '1.5rem' }}>📸</span>
+                <span>Instagram</span>
+              </a>
+
+            </div>
+          </div>
+          {/* --------------------------- */}
+
         </div>
       </div>
     );
