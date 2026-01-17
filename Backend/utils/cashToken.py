@@ -15,41 +15,65 @@ def generate_cash_token_logic(amount: float, vol_id: int, session: Session):
     session.commit()
     return {"token": code, "amount": amount}
 
-def verify_cash_token_logic(
-    token_str: str, 
-    required_amount: float, 
-    user_id: int,           # 👈 Added: Needed to create the PaymentOrder
-    event_ids: list[int],   # 👈 Added: To track what was paid for
-    session: Session
-):
-    # 1. Find Token
+def validate_cash_token(token_str: str, required_amount: float, session: Session):
+    """
+    Checks if token exists, is unused, and has correct amount.
+    Does NOT modify the database.
+    """
     token = session.exec(select(CashToken).where(CashToken.token == token_str)).first()
     
     if not token: 
-        raise HTTPException(400, detail="Invalid Token")
+        raise HTTPException(400, detail="Invalid Cash Token")
     if token.is_used: 
-        raise HTTPException(400, detail="Token already used")
+        raise HTTPException(400, detail="Token has already been used")
     if token.amount != required_amount: 
-        raise HTTPException(400, detail="Token amount does not match total fee")
+        raise HTTPException(400, detail=f"Token value (₹{token.amount}) does not match Total Fee (₹{required_amount})")
     
-    # 2. Mark Token as Used
-    token.is_used = True
-    session.add(token)
+    return token
 
-    # 3. Create the PaymentOrder (FIXES THE ERROR)
-    # We must create this record so the Registrations have a valid 'order_id' to point to.
+# ✅ NEW FUNCTION: Call this BEFORE registration logic
+def create_cash_order(
+    token_str: str, 
+    amount: float, 
+    user_id: int, 
+    event_ids: list[int], 
+    session: Session
+):
+    """
+    Creates the PaymentOrder so Foreign Keys don't fail during registration.
+    Safe to call multiple times (checks if exists first).
+    """
+    # Check if order already exists (from a previous failed attempt)
+    existing_order = session.get(PaymentOrder, token_str)
+    if existing_order:
+        return # Order already exists, we can proceed to use it
+
+    # Create new order if not exists
+    token = session.exec(select(CashToken).where(CashToken.token == token_str)).first()
+    
     cash_order = PaymentOrder(
-        order_id=token_str,             # The Cash Token becomes the Order ID
+        order_id=token_str,              
         user_id=user_id,
-        amount=required_amount,
-        status=PaymentStatus.PAID,      # Cash is instantly successful
+        amount=amount,
+        status=PaymentStatus.PAID,       
         event_ids_json=json.dumps(event_ids),
-        payment_session_id="CASH_VERIFIED", # Placeholder for the system
+        payment_session_id="CASH_VERIFIED",
         gateway_reference_id=f"TOKEN_{token.id}" 
     )
     session.add(cash_order)
-
-    # 4. Commit Both (Token Update + New Order)
     session.commit()
+
+# ✅ UPDATED: Call this AFTER registration success
+def consume_cash_token(token_str: str, session: Session):
+    """
+    Marks token as used.
+    Now simplified because the Order is created in the previous step.
+    """
+    token = session.exec(select(CashToken).where(CashToken.token == token_str)).first()
+    
+    if token:
+        token.is_used = True
+        session.add(token)
+        session.commit()
     
     return True

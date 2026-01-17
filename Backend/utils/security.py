@@ -6,7 +6,7 @@ from passlib.context import CryptContext
 # CONFIGURATION
 SECRET_KEY = "CHANGE_THIS_TO_A_LONG_RANDOM_STRING_IN_PRODUCTION" 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 12 # 12 Hours session
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 4 
 
 # Password Hasher
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -22,7 +22,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
     to_encode.update({"exp": expire})
     encoded_jwt = pyjwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)

@@ -19,6 +19,13 @@ def register_bulk_logic(req: BulkRegisterRequest, session: Session, background_t
         event = session.get(Event, item.event_id)
         if not event: continue
 
+        for tm in item.teammates:    
+                if tm.email.strip().lower() == leader.email.strip().lower():
+                    raise HTTPException(
+                status_code=400, 
+                detail=f"Error in Event '{event.name}': The Team Leader ({leader.email}) cannot be added as a teammate. You are already included automatically."
+            )
+
         # --- VALIDATION ---
         total_participants = 1 + len(item.teammates)
         if event.type == EventType.GROUP:
@@ -54,6 +61,7 @@ def register_bulk_logic(req: BulkRegisterRequest, session: Session, background_t
             team_id = new_team.id
             
             for tm in item.teammates:    
+
                 tm_user = session.exec(select(User).where(User.email == tm.email)).first()
                 if not tm_user:
                     # Create Shadow User

@@ -6,7 +6,7 @@ from models import Event, User, Registration, PaymentStatus
 from models.enums import EventType
 from schemas.event_schemas import EventDisplay, BulkRegisterRequest, TeamValidationRequest
 from services import event_service, payment_service
-from utils.cashToken import verify_cash_token_logic
+from utils.cashToken import validate_cash_token, consume_cash_token, create_cash_order
 from dotenv import load_dotenv
 import os
 from api.dependencies import require_admin
@@ -124,13 +124,17 @@ def register_bulk(
         
     elif req.payment_mode == 'CASH':
         # (Keep existing Cash Logic)
-        verify_cash_token_logic(req.cash_token, total_fee, leader.id, event_ids, session)
+        validate_cash_token(req.cash_token, total_fee, session)
+        create_cash_order(req.cash_token, total_fee, leader.id, event_ids, session)
         status_to_save = PaymentStatus.PAID
         final_order_id = req.cash_token
 
     # 4. Register in DB (as PENDING)
     msg = event_service.register_bulk_logic(req, session, background_tasks, status_to_save,order_id=final_order_id)
     
+    if req.payment_mode == 'CASH':
+        consume_cash_token(req.cash_token, session)
+
     return {
         "status": "success", 
         "message": msg, 
