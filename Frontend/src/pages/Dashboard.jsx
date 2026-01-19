@@ -273,7 +273,13 @@ const Dashboard = () => {
         {myEvents.map(event => (
           <div key={event.id} className="glass-card" style={{ borderLeft: '4px solid var(--success)', padding: '1.5rem' }}>
             <span className="badge badge-success" style={{ marginBottom: '0.8rem', display: 'inline-block' }}>PAID & CONFIRMED</span>
+            {event.team_name && (
+                    <span className="badge badge-success" style={{fontSize: '0.9rem', color: 'var(--primary)', borderColor: 'var(--primary)', marginLeft:'0.5rem'}}>
+                        {event.team_name}
+                    </span>
+                )}
             <h3 style={{ fontSize: '1.25rem' }}>{event.name}</h3>
+  
           </div>
         ))}
       </div>
