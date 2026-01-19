@@ -9,7 +9,8 @@ import EventInfoModal from './components/EventInfoModal'; // <--- NEW IMPORT
 const Dashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const uid = location.state?.uid;
+
+  const uid = location.state?.uid || sessionStorage.getItem("active_user_uid");
 
   // --- DATA STATE ---
   const [user, setUser] = useState(null);
@@ -279,10 +280,20 @@ const Dashboard = () => {
 
       {/* 3. AVAILABLE EVENTS */}
       <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-muted)' }}>AVAILABLE EVENTS</h3>
+      <div style={{ marginTop: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.95rem' }}>
+          <p style={{ color: 'var(--danger)', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+            Note: You should not register for multiple events that are occuring simultaneously
+          </p>
+          <p style={{ margin: 0 }}>
+            No refund available. <br />
+            Read all the rules for events before registering.
+          </p>
+      </div>
       <div className="grid-cards">
         {availableEvents.map(event => {
           const stackItem = eventStack.find(i => i.event_id === event.id);
           const isInStack = !!stackItem;
+          
           
           return (
             <div key={event.id} className="glass-card" style={{ display: 'flex', flexDirection: 'column', borderColor: isInStack ? 'var(--primary)' : 'var(--glass-border)' }}>
@@ -320,6 +331,7 @@ const Dashboard = () => {
           );
         })}
       </div>
+
 
       {/* 4. FLOATING STACK BAR */}
       {!isCheckoutOpen && eventStack.length > 0 && (

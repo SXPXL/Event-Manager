@@ -86,7 +86,37 @@ def register_bulk(
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session)
 ):
-    # ... (Keep existing validation logic) ...
+
+    leader = session.exec(select(User).where(User.uid == req.leader_uid)).first()
+    if not leader: raise HTTPException(404, detail="Leader not found")
+    
+    for item in req.items:
+        evt = session.get(Event, item.event_id)
+        if not evt: continue
+
+        seen_emails = set()
+        leader_email = leader.email.strip().lower()
+
+        for tm in item.teammates:
+            email = tm.email.strip().lower()
+            
+            # Check 1: Leader is in teammates
+            if email == leader_email:
+                 raise HTTPException(400, detail=f"Error in Event '{evt.name}': The Team Leader ({leader.email}) cannot be added as a teammate.")
+            
+            # Check 2: Duplicates within the list
+            if email in seen_emails:
+                 raise HTTPException(400, detail=f"Error in Event '{evt.name}': The user '{tm.email}' is added multiple times.")
+            
+            seen_emails.add(email)
+
+        # Check 3: Team Size
+        total_participants = 1 + len(item.teammates)
+        if evt.type == EventType.GROUP:
+             if total_participants < evt.min_team_size:
+                 raise HTTPException(400, detail=f"Event '{evt.name}' requires a minimum of {evt.min_team_size} participants.")
+             if total_participants > evt.max_team_size:
+                 raise HTTPException(400, detail=f"Event '{evt.name}' allows a maximum of {evt.max_team_size} participants.")
 
     # 1. Calculate Fee & Collect IDs
     total_fee = 0
@@ -98,8 +128,7 @@ def register_bulk(
             event_ids.append(evt.id)
 
     # 2. Get Leader
-    leader = session.exec(select(User).where(User.uid == req.leader_uid)).first()
-    if not leader: raise HTTPException(404, detail="Leader not found")
+    
 
     final_order_id = None
     payment_response = {}
