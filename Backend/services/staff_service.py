@@ -30,12 +30,13 @@ def search_users_logic(query: str, session: Session):
     Case-insensitive search.
     """
     q = query.strip().lower()
+    search_pattern = f"%{q}%"
     
     # Search logic: (Name contains Q) OR (Email contains Q) OR (UID contains Q)
     statement = select(User).where(
-        (col(User.name).contains(q)) | 
-        (col(User.email).contains(q)) | 
-        (col(User.uid).contains(q))
+        (col(User.name).ilike(search_pattern)) | 
+        (col(User.email).ilike(search_pattern)) | 
+        (col(User.uid).ilike(search_pattern))
     )
     
     results = session.exec(statement).all()
